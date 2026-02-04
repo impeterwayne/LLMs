@@ -92,6 +92,26 @@
       transform: translateY(-1px);
     }
 
+    /* Research provider styling (Google AI, Reddit) */
+    .provider-toggle.provider-research.active {
+      border-color: #34a853;
+      box-shadow: 0 4px 12px rgba(52, 168, 83, 0.3);
+    }
+
+    .provider-toggle.provider-research:hover {
+      border-color: #34a853;
+    }
+
+    /* Provider divider */
+    .provider-divider {
+      width: 1px;
+      height: 28px;
+      background: var(--outline);
+      margin: 0 4px;
+      align-self: center;
+      opacity: 0.5;
+    }
+
     #prompt-area {
       position: fixed;
       left: min(var(--sidebar-width, 280px), var(--sidebar-max, 280px));
@@ -544,6 +564,9 @@
       <button class="provider-toggle" data-provider="claude">Claude</button>
       <button class="provider-toggle" data-provider="grok">Grok</button>
       <button class="provider-toggle" data-provider="deepseek">DeepSeek</button>
+      <span class="provider-divider"></span>
+      <button class="provider-toggle provider-research" data-provider="googleai">🔍 Google</button>
+      <button class="provider-toggle provider-research" data-provider="reddit">📱 Reddit</button>
     </div>
     <div class="chat-input-row">
       <textarea id="prompt-input" rows="3" placeholder="Press Ctrl + Enter to send prompt"></textarea>

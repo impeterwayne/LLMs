@@ -439,6 +439,139 @@ export function injectPromptIntoView(
         }
       })(${JSON.stringify(prompt)});
     `);
+  } else if (view.id && view.id.match("google.com") && !view.id.match("gemini.google.com")) {
+    // Google AI Mode: Inject into search textarea
+    view.webContents.executeJavaScript(`
+      ((prompt) => {
+        // Try multiple selectors for Google's search input
+        const textarea = document.querySelector('textarea[name="q"]') 
+                      || document.querySelector('textarea[aria-label*="Search"]')
+                      || document.querySelector('input[name="q"]')
+                      || document.querySelector('textarea');
+        if (textarea) {
+          const nativeValueSetter = Object.getOwnPropertyDescriptor(
+            textarea.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
+            'value'
+          )?.set;
+          nativeValueSetter?.call(textarea, prompt);
+          const inputEvent = new Event('input', { bubbles: true });
+          textarea.dispatchEvent(inputEvent);
+          textarea.focus();
+          console.log('[Google AI] Prompt injected into search field');
+        } else {
+          console.error('[Google AI] Search input not found');
+        }
+      })(${JSON.stringify(prompt)});
+    `);
+  } else if (view.id && view.id.match("reddit.com")) {
+    // Reddit: Inject prompt into the search field, let user hit Enter to search
+    view.webContents.executeJavaScript(`
+      (async (prompt) => {
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        
+        // Helper to search through shadow roots
+        const queryShadow = (root, selector) => {
+          if (!root) return null;
+          // Try direct query first
+          let el = root.querySelector?.(selector);
+          if (el) return el;
+          // Search shadow roots
+          const elements = root.querySelectorAll?.('*') || [];
+          for (const elem of elements) {
+            if (elem.shadowRoot) {
+              el = queryShadow(elem.shadowRoot, selector);
+              if (el) return el;
+            }
+          }
+          return null;
+        };
+        
+        // Try to find the input with multiple strategies
+        const findInput = () => {
+          // Reddit Answers uses guides-search-input-base web component
+          // First, try to find it and look inside its shadow DOM
+          const guidesSearch = document.querySelector('guides-search-input-base');
+          if (guidesSearch) {
+            // Check if it has shadow root
+            if (guidesSearch.shadowRoot) {
+              const shadowInput = guidesSearch.shadowRoot.querySelector('textarea, input[type="text"], input[type="search"]');
+              if (shadowInput) return shadowInput;
+              // Also search nested shadow roots
+              const nestedEl = queryShadow(guidesSearch.shadowRoot, 'textarea, input[type="text"], input[type="search"]');
+              if (nestedEl) return nestedEl;
+            }
+            // Try to find input inside guides-search-input-base (light DOM)
+            const lightInput = guidesSearch.querySelector('textarea, input[type="text"], input[type="search"]');
+            if (lightInput) return lightInput;
+          }
+          
+          // Reddit Answers uses various selectors - try them all
+          const selectors = [
+            'guides-search-input-base textarea',
+            'guides-search-input-base input',
+            'faceplate-textarea-input textarea',
+            'faceplate-textarea-input input',
+            'shreddit-async-loader textarea',
+            'reddit-search-large input',
+            'reddit-search-large textarea',
+            '[label*="Ask"] textarea',
+            '[label*="Ask"] input',
+            'input[type="search"]',
+            'input[name="q"]',
+            'textarea[placeholder*="Ask"]',
+            'textarea[placeholder*="ask"]',
+            'textarea[placeholder*="question"]',
+            'textarea[placeholder*="Search"]',
+            '[data-testid="search-input"]',
+            'form input[type="text"]',
+            'textarea',
+            'input[type="text"]'
+          ];
+          
+          for (const sel of selectors) {
+            // Try document first
+            let el = document.querySelector(sel);
+            if (el) return el;
+            // Try shadow DOM
+            el = queryShadow(document, sel);
+            if (el) return el;
+          }
+          return null;
+        };
+        
+        // Wait for element to appear (Reddit loads dynamically)
+        let input = null;
+        for (let i = 0; i < 20; i++) {
+          input = findInput();
+          if (input) break;
+          await wait(250);
+        }
+        
+        if (input) {
+          const isTextarea = input.tagName === 'TEXTAREA';
+          const nativeValueSetter = Object.getOwnPropertyDescriptor(
+            isTextarea ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
+            'value'
+          )?.set;
+          nativeValueSetter?.call(input, prompt);
+          
+          // Dispatch multiple events to ensure React/framework picks up the change
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.focus();
+          console.log('[Reddit] Prompt injected into search field:', input.tagName, input.placeholder || '', input.className || '');
+        } else {
+          // Debug info to help diagnose the issue
+          const guidesSearch = document.querySelector('guides-search-input-base');
+          console.error('[Reddit] Search input not found after waiting. Debug info:', {
+            hasGuidesSearchInputBase: !!guidesSearch,
+            guidesSearchHasShadowRoot: guidesSearch?.shadowRoot ? true : false,
+            allTextareas: document.querySelectorAll('textarea').length,
+            allInputs: document.querySelectorAll('input').length
+          });
+        }
+      })(${JSON.stringify(prompt)});
+    `);
   }
 }
 
@@ -1013,6 +1146,39 @@ export function sendPromptInView(view: CustomBrowserView) {
             console.log("Element not found");
           }
     }`);
+  } else if (view.id && view.id.match("google.com") && !view.id.match("gemini.google.com")) {
+    // Google AI Mode: Submit the search by pressing Enter or clicking search button
+    view.webContents.executeJavaScript(`
+      {
+        const textarea = document.querySelector('textarea[name="q"]') 
+                      || document.querySelector('textarea[aria-label*="Search"]')
+                      || document.querySelector('input[name="q"]')
+                      || document.querySelector('textarea');
+        if (textarea) {
+          // Simulate Enter key press to submit
+          const enterEvent = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+          });
+          textarea.dispatchEvent(enterEvent);
+          console.log('[Google AI] Enter key dispatched');
+          
+          // Fallback: try submitting the form directly
+          const form = textarea.closest('form');
+          if (form) {
+            form.submit();
+            console.log('[Google AI] Form submitted');
+          }
+        }
+      }
+    `);
+  } else if (view.id && view.id.match("reddit.com")) {
+    // Reddit: No action needed - prompt is injected into search field, user must hit Enter to search
+    console.log("[Reddit] Prompt injected, awaiting user Enter to search");
   }
 }
 
