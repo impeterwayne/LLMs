@@ -16,6 +16,10 @@ const SELECTORS = {
         'button:has(div svg)',
         'button:has(svg)',
     ],
+    copyButton: [
+        'button[data-testid="action-bar-copy"]',
+        'button[aria-label="Copy"]',
+    ],
     dropZone: [
         '[data-testid="chat-input-dropzone"]',
         '.MessageComposerDropzone',
@@ -46,5 +50,11 @@ export const claude: Provider = {
             '__DROP_ZONE_SELECTORS__': JSON.stringify(SELECTORS.dropZone),
             '__FILES__': JSON.stringify(files),
         }, JS_WAIT, JS_FILE_HELPERS, JS_FIND_FIRST, JS_FILE_INPUT_ASSIGN, JS_SIMULATE_DND, JS_WAIT_FOR_ELEMENT);
+    },
+
+    buildCopyScript(): string {
+        return loadScript('claude', 'copy', {
+            '__COPY_SELECTORS__': JSON.stringify(SELECTORS.copyButton.join(', ')),
+        });
     },
 };

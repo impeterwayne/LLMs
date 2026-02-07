@@ -15,6 +15,11 @@ const SELECTORS = {
     'button[aria-label*="Gửi"]',
     'button[type="submit"]',
   ],
+  copyButton: [
+    'button[aria-label="Copy"]',
+    'button[aria-label*="Sao ch"]',   // Vietnamese "Sao chép"
+    'button[aria-label*="copy"]',
+  ],
 };
 
 export const grok: Provider = {
@@ -33,5 +38,11 @@ export const grok: Provider = {
       '__SEND_SELECTORS__': JSON.stringify(SELECTORS.sendButton),
       '__EDITOR_SELECTOR__': SELECTORS.editor,
     }, JS_WAIT, JS_CLICK_FIRST_BUTTON, JS_SIMULATE_ENTER);
+  },
+
+  buildCopyScript(): string {
+    return loadScript('grok', 'copy', {
+      '__COPY_SELECTORS__': JSON.stringify(SELECTORS.copyButton),
+    });
   },
 };

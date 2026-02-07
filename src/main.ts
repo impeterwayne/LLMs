@@ -29,6 +29,7 @@ import {
   dumpViewDebugInfo,
 } from "./utilities.js"; // Adjusted path
 import type { SerializedFile } from "./utilities.js";
+import { getProvider } from "./providers/registry.js";
 import { applyCustomStyles } from "./customStyles.js";
 import { createRequire } from "node:module"; // Import createRequire
 import { fileURLToPath } from "node:url"; // Import fileURLToPath
@@ -825,24 +826,24 @@ ipcMain.on("copy-to-clipboard", (_, text: string) => {
   clipboard.writeText(text ?? "");
 });
 
-// Copy all answers from ChatGPT, Gemini, and Perplexity
+// Copy all answers from all views that support copy
 ipcMain.handle("copy-all-answers", async () => {
   const tempDir = app.getPath("temp");
   const tempFiles: { provider: string; filePath: string }[] = [];
 
-  // Filter to only ChatGPT, Gemini, and Perplexity views
+  // Filter to views whose provider supports buildCopyScript
   const targetViews = views.filter((v) => {
-    const id = v.id?.toLowerCase() || "";
-    return id.includes("chatgpt") || id.includes("gemini") || id.includes("perplexity");
+    const p = getProvider(v.id);
+    return p?.buildCopyScript != null;
   });
 
   for (const view of targetViews) {
     try {
-      // Determine provider name
-      let provider = "Unknown";
-      if (view.id?.match("chatgpt")) provider = "ChatGPT";
-      else if (view.id?.match("gemini")) provider = "Gemini";
-      else if (view.id?.match("perplexity")) provider = "Perplexity";
+      // Determine provider name from registry
+      const p = getProvider(view.id);
+      const provider = p?.id
+        ? p.id.charAt(0).toUpperCase() + p.id.slice(1)
+        : "Unknown";
 
       // Clear clipboard before copying
       clipboard.writeText("");
