@@ -894,13 +894,18 @@ ipcMain.on("paste-prompt", (_: IpcMainEvent, prompt: string) => {
   views.forEach((view: CustomBrowserView) => {
     injectPromptIntoView(view, prompt);
   });
+
+  // Refocus main window so user's prompt input keeps focus
+  mainWindow.webContents.focus();
 });
 
 ipcMain.on("enter-prompt", (_: IpcMainEvent, prompt: string) => {
-  // Added type for prompt
   views.forEach((view: CustomBrowserView) => {
     injectPromptIntoView(view, prompt);
   });
+
+  // Refocus main window so user's prompt input keeps focus
+  mainWindow.webContents.focus();
 });
 
 ipcMain.handle(
@@ -953,6 +958,9 @@ ipcMain.on("send-prompt", async (_evt, prompt: string) => {
   views.forEach((view: CustomBrowserView) => {
     sendPromptInView(view);
   });
+
+  // Refocus main window so user's prompt input keeps focus
+  mainWindow.webContents.focus();
 
   // Delay snapshotting the layout so navigations can settle
   try {

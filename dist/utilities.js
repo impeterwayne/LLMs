@@ -163,17 +163,33 @@ export function injectPromptIntoView(view, prompt) {
     `);
     }
     else if (view.id && view.id.match("gemini")) {
+        // Focus the webContents first so the page thinks it's active
+        view.webContents.focus();
         view.webContents.executeJavaScript(`
       ((prompt) => {
-        const inputElement = document.querySelector('.ql-editor.textarea');
+        const inputElement = document.querySelector('.ql-editor.textarea') 
+            || document.querySelector('div[aria-label="Enter a prompt for Gemini"]')
+            || document.querySelector('div[role="textbox"]');
         if (inputElement) {
-          const inputEvent = new Event('input', { bubbles: true });
-          inputElement.value = prompt;
-          inputElement.dispatchEvent(inputEvent);
-          const paragraph = inputElement.querySelector('p');
-          if (paragraph) {
-            paragraph.textContent = prompt;
-          }
+          // Click and focus the editor so Quill activates
+          inputElement.click();
+          inputElement.focus();
+          
+          // Select all existing content then delete it
+          const sel = window.getSelection();
+          sel.selectAllChildren(inputElement);
+          document.execCommand('delete', false);
+          
+          // Insert text via execCommand which goes through browser editing pipeline
+          // This triggers Quill's internal event handlers properly
+          document.execCommand('insertText', false, prompt);
+          
+          // Also dispatch input event as backup
+          inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+          
+          console.log('[Gemini] Prompt injected via execCommand (follow-up safe)');
+        } else {
+          console.error('[Gemini] Editor element not found');
         }
       })(${JSON.stringify(prompt)});
     `);
@@ -380,6 +396,111 @@ export function injectPromptIntoView(view, prompt) {
           nativeTextAreaValueSetter?.call(inputElement, prompt);
           const inputEvent = new Event('input', { bubbles: true });
           inputElement.dispatchEvent(inputEvent);
+        }
+      })(${JSON.stringify(prompt)});
+    `);
+    }
+    else if (view.id && view.id.match("google.com") && !view.id.match("gemini.google.com")) {
+        // Google AI Mode: Inject into search textarea using execCommand for follow-up support
+        view.webContents.focus();
+        view.webContents.executeJavaScript(`
+      ((prompt) => {
+        // Try multiple selectors for Google AI Mode's input
+        const textarea = document.querySelector('textarea[aria-label="Ask anything"]') 
+                      || document.querySelector('textarea[name="q"]') 
+                      || document.querySelector('textarea[aria-label*="Search"]')
+                      || document.querySelector('input[name="q"]')
+                      || document.querySelector('textarea');
+        if (textarea) {
+          // Click and focus the textarea first
+          textarea.click();
+          textarea.focus();
+          
+          // Select all existing content, then replace with new text
+          // This ensures old text is cleared even in framework-managed state
+          document.execCommand('selectAll', false);
+          document.execCommand('insertText', false, prompt);
+          
+          console.log('[Google AI] Prompt injected (follow-up safe)');
+        } else {
+          console.error('[Google AI] Search input not found');
+        }
+      })(${JSON.stringify(prompt)});
+    `);
+    }
+    else if (view.id && view.id.match("reddit.com")) {
+        // Focus the webContents first
+        view.webContents.focus();
+        view.webContents.executeJavaScript(`
+      (async (prompt) => {
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        
+        // Helper to search through shadow roots
+        const findDeep = (selector, root = document) => {
+          const el = root.querySelector?.(selector);
+          if (el) return el;
+          const all = root.querySelectorAll?.('*') || [];
+          for (const elem of all) {
+            if (elem.shadowRoot) {
+              const found = findDeep(selector, elem.shadowRoot);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        
+        // Try to find the input with multiple strategies
+        const findInput = () => {
+          const selectors = [
+            'textarea#innerTextArea',
+            '#innerTextArea',
+            'guides-search-input-base textarea',
+            'guides-search-input-base input',
+            'faceplate-textarea-input textarea',
+            'faceplate-textarea-input input',
+            'textarea[placeholder*="Ask"]',
+            'textarea[placeholder*="ask"]',
+            'textarea[placeholder*="Search"]',
+            'input[type="search"]',
+            'input[name="q"]',
+            '[data-testid="search-input"]',
+            'textarea',
+            'input[type="text"]'
+          ];
+          
+          for (const sel of selectors) {
+            let el = document.querySelector(sel);
+            if (el) return el;
+            el = findDeep(sel);
+            if (el) return el;
+          }
+          return null;
+        };
+        
+        // Wait for element to appear (Reddit loads dynamically)
+        let input = null;
+        for (let i = 0; i < 20; i++) {
+          input = findInput();
+          if (input) break;
+          await wait(250);
+        }
+        
+        if (input) {
+          // Focus and click the input to activate it
+          input.click();
+          input.focus();
+          
+          // Select all existing content  
+          input.select?.();
+          
+          // Use execCommand to insert text through the browser editing pipeline
+          // This triggers React/framework state updates properly
+          document.execCommand('selectAll', false);
+          document.execCommand('insertText', false, prompt);
+          
+          console.log('[Reddit] Prompt injected:', input.tagName, input.id || '', input.placeholder || '');
+        } else {
+          console.error('[Reddit] Search input not found after waiting');
         }
       })(${JSON.stringify(prompt)});
     `);
@@ -829,12 +950,32 @@ export function sendPromptInView(view) {
         `);
     }
     else if (view.id && view.id.match("gemini")) {
+        view.webContents.focus();
         view.webContents.executeJavaScript(`{
-      var btn = document.querySelector("button[aria-label*='Send message']");
+      // Try multiple selectors for Gemini send button
+      var btn = document.querySelector("button[aria-label*='Send message']")
+             || document.querySelector("button.send-button")
+             || document.querySelector('button[data-test-id="send-button"]');
       if (btn) {
         btn.setAttribute("aria-disabled", "false");
+        btn.disabled = false;
         btn.focus();
         btn.click();
+        console.log('[Gemini] Send button clicked');
+      } else {
+        // Fallback: simulate Enter key on the editor
+        var editor = document.querySelector('.ql-editor.textarea')
+                  || document.querySelector('div[aria-label="Enter a prompt for Gemini"]')
+                  || document.querySelector('div[role="textbox"]');
+        if (editor) {
+          editor.focus();
+          var event = new KeyboardEvent('keydown', {
+            key: 'Enter', code: 'Enter', keyCode: 13,
+            bubbles: true, cancelable: true
+          });
+          editor.dispatchEvent(event);
+          console.log('[Gemini] Enter key simulated as fallback');
+        }
       }
     }`);
     }
@@ -953,6 +1094,90 @@ export function sendPromptInView(view) {
           } else {
             console.log("Element not found");
           }
+    }`);
+    }
+    else if (view.id && view.id.match("google.com") && !view.id.match("gemini.google.com")) {
+        // Google AI Mode: Click the Send button
+        view.webContents.focus();
+        view.webContents.executeJavaScript(`
+      {
+        // Find Send button - check multiple locale labels + class-based fallback
+        const allSendBtns = Array.from(document.querySelectorAll(
+          'button[aria-label="Send"], button[aria-label="Gửi"], button.OEueve'
+        ));
+        const sendBtn = allSendBtns.find(btn => btn.offsetWidth > 0 && btn.offsetHeight > 0)
+                     || allSendBtns[allSendBtns.length - 1];
+        if (sendBtn) {
+          sendBtn.focus();
+          sendBtn.click();
+          console.log('[Google AI] Send button clicked, aria-label:', sendBtn.getAttribute('aria-label'));
+        } else {
+          // Fallback: try Enter key on textarea
+          const textarea = document.querySelector('textarea');
+          if (textarea) {
+            textarea.focus();
+            textarea.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+              bubbles: true, cancelable: true
+            }));
+            console.log('[Google AI] Enter key dispatched as fallback');
+          }
+        }
+      }
+    `);
+    }
+    else if (view.id && view.id.match("reddit.com")) {
+        view.webContents.focus();
+        view.webContents.executeJavaScript(`{
+      // Helper to search through shadow roots
+      const findDeep = (selector, root = document) => {
+        const el = root.querySelector?.(selector);
+        if (el) return el;
+        const all = root.querySelectorAll?.('*') || [];
+        for (const e of all) {
+          if (e.shadowRoot) {
+            const found = findDeep(selector, e.shadowRoot);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const btn = findDeep("#submit-button") 
+               || findDeep('button[aria-label*="Submit"]')
+               || findDeep('button[type="submit"]');
+
+      if (btn) {
+        btn.focus();
+        btn.click();
+        console.log('[Reddit] Submit button clicked via deep shadow search');
+      } else {
+        // Fallback: simulate Enter on the input
+        const input = findDeep("#innerTextArea") || document.querySelector("textarea");
+        if (input) {
+          input.focus();
+          // Try form submission first
+          const form = input.closest('form');
+          if (form) {
+            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            console.log('[Reddit] Form submit dispatched');
+          }
+          // Also try Enter key
+          input.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter', code: 'Enter', keyCode: 13,
+            bubbles: true, cancelable: true
+          }));
+          input.dispatchEvent(new KeyboardEvent('keypress', {
+            key: 'Enter', code: 'Enter', keyCode: 13,
+            bubbles: true, cancelable: true
+          }));
+          input.dispatchEvent(new KeyboardEvent('keyup', {
+            key: 'Enter', code: 'Enter', keyCode: 13,
+            bubbles: true, cancelable: true
+          }));
+          console.log('[Reddit] Enter key sequence dispatched');
+        }
+      }
     }`);
     }
 }
