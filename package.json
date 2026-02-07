@@ -7,7 +7,7 @@
   "author": "Khac Cuong",
   "description": "Prompt multiple LLM's at the same time!",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && xcopy /E /I /Y src\\providers\\scripts dist\\providers\\scripts",
     "start": "npm run build && electron .",
     "prettier": "prettier -w .",
     "make": "npm run build && electron-forge make",

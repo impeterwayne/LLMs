@@ -26,6 +26,7 @@ import {
   simulateFileDropInView,
   ensureDetachedDevTools,
   copyAnswerFromView,
+  dumpViewDebugInfo,
 } from "./utilities.js"; // Adjusted path
 import type { SerializedFile } from "./utilities.js";
 import { applyCustomStyles } from "./customStyles.js";
@@ -598,6 +599,31 @@ app.whenReady().then(() => {
 
   electronLocalShortcut.register(mainWindow, "Ctrl+W", () => {
     app.quit();
+  });
+
+  // Debug: Ctrl+Shift+D dumps DOM + screenshot for the focused view only.
+  // Click on the broken provider pane first, then press the shortcut.
+  // Falls back to all views if none is focused.
+  electronLocalShortcut.register(mainWindow, "Ctrl+Shift+D", async () => {
+    const focusedView = views.find((v) => v.webContents.isFocused());
+    const target = focusedView ? [focusedView] : views;
+    const label = focusedView
+      ? `focused view (${focusedView.webContents.getURL()})`
+      : `all ${views.length} views`;
+    console.log(`[LLM-God] Debug dump triggered for ${label}`);
+    try {
+      const dumpDir = await dumpViewDebugInfo(target as any);
+      mainWindow.webContents.send("notification", {
+        type: "success",
+        message: `Debug dump saved: ${label} → ${dumpDir}`,
+      });
+    } catch (err: any) {
+      console.error("[LLM-God] Debug dump failed:", err);
+      mainWindow.webContents.send("notification", {
+        type: "error",
+        message: `Debug dump failed: ${err.message}`,
+      });
+    }
   });
 
   globalShortcut.register("CommandOrControl+Q", async () => {
