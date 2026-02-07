@@ -1,214 +1,234 @@
 <!doctype html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Edit Prompt</title>
-    <style>
-      :root {
-        --app-viewport-height: 1vh;
-      }
 
+<head>
+  <meta charset="utf-8" />
+  <title>Edit Prompt</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0e0e10;
+      --surface: #18181b;
+      --surface-high: #1f1f23;
+      --surface-variant: #27272a;
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --accent: #8ab4f8;
+      --accent-hover: #6ea3f7;
+      --border: #27272a;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --font: "Inter", system-ui, -apple-system, sans-serif;
+      --app-viewport-height: 1vh;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--font);
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      min-height: 100vh;
+      min-height: calc(var(--app-viewport-height) * 100);
+      padding: 16px 0 0;
+      padding-top: calc(16px + env(safe-area-inset-top, 0px));
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      transition: justify-content 0.2s ease;
+    }
+
+    body.is-overflowing {
+      justify-content: flex-start;
+    }
+
+    @supports (height: 100dvh) {
       body {
-        background-color: #121212;
-        color: #e6e1e5;
-        font-family: "Segoe UI", Arial, sans-serif;
-        margin: 0;
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        min-height: 100vh;
+        min-height: 100dvh;
         min-height: calc(var(--app-viewport-height) * 100);
-        padding: 16px 0 0;
-        padding-top: calc(16px + env(safe-area-inset-top, 0px));
-        padding-left: env(safe-area-inset-left, 0px);
-        padding-right: env(safe-area-inset-right, 0px);
-        padding-bottom: env(safe-area-inset-bottom, 0px);
-        transition: justify-content 0.3s ease;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    .form-container {
+      background-color: var(--surface);
+      padding: 24px;
+      border-radius: 0;
+      width: 100%;
+      height: auto;
+      max-width: none;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 16px;
+    }
+
+    h2 {
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      font-size: 14px;
+      text-align: center;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 140px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background-color: var(--surface-high);
+      color: var(--text-primary);
+      font-size: 14px;
+      transition: border-color 0.15s;
+      resize: vertical;
+      font-family: var(--font);
+      line-height: 1.6;
+      margin: 8px 0;
+    }
+
+    textarea::placeholder {
+      color: var(--text-muted);
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    button {
+      font-family: var(--font);
+      background-color: var(--accent);
+      color: var(--bg);
+      padding: 10px 16px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s;
+      width: 50%;
+      min-width: 120px;
+    }
+
+    button:hover {
+      background-color: var(--accent-hover);
+    }
+
+    button:active {
+      opacity: 0.9;
+    }
+
+    button:disabled {
+      background-color: var(--surface-variant);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="form-container">
+    <h2 style="text-align: center">Edit Prompt</h2>
+    <form id="form">
+      <textarea id="template-content" placeholder="Enter your prompt template here..." spellcheck="true"></textarea>
+      <button type="submit">Save Prompt</button>
+    </form>
+  </div>
+  <script src="../dist/save_edited_prompt.js"></script>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const body = document.body;
+      const formContainer = document.querySelector(".form-container");
+
+      if (!formContainer) {
+        return;
       }
 
-      body.is-overflowing {
-        justify-content: flex-start;
-      }
+      const getViewportHeight = () =>
+        window.visualViewport?.height ?? document.documentElement.clientHeight;
 
-      @supports (height: 100dvh) {
-        body {
-          min-height: 100dvh;
-          min-height: calc(var(--app-viewport-height) * 100);
-        }
-      }
+      const updateOverflowState = () => {
+        const viewportHeight = getViewportHeight();
+        const styles = window.getComputedStyle(body);
+        const paddingTop = parseFloat(styles.paddingTop) || 0;
+        const paddingBottom = parseFloat(styles.paddingBottom) || 0;
+        const totalHeight =
+          formContainer.getBoundingClientRect().height + paddingTop + paddingBottom;
 
-      .form-container {
-        background-color: #1e1b1f;
-        padding: 24px;
-        border-radius: 0;
-        box-shadow:
-          0 18px 40px rgba(0, 0, 0, 0.45),
-          0 2px 6px rgba(0, 0, 0, 0.3);
-        width: 100%;
-        height: auto;
-        max-width: none; /* Allow container to span full parent width */
-        margin: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-start; /* Align items to the top */
-        gap: 16px;
-      }
-      h2 {
-        color: #e6e1e5;
-        margin-bottom: 8px;
-        font-size: 20px;
-        text-align: center;
-        font-weight: 600;
-      }
-
-      form {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 14px;
-        width: 100%;
-      }
-
-      textarea {
-        width: 100%;
-        min-height: 160px;
-        padding: 14px;
-        border: none;
-        border-radius: 14px;
-        background-color: #2b2830;
-        color: #e6e1e5;
-        font-size: 16px;
-        transition: box-shadow 0.3s ease, transform 0.2s ease;
-        resize: vertical;
-        font-family: "Segoe UI", Arial, sans-serif;
-        line-height: 1.5;
-        margin: 10px 0;
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-      }
-
-      textarea::placeholder {
-        color: rgba(230, 225, 229, 0.6);
-      }
-
-      textarea:focus {
-        outline: none;
-        box-shadow:
-          inset 0 0 0 2px #9a82ff,
-          0 0 0 4px rgba(154, 130, 255, 0.2);
-        transform: translateY(-1px);
-      }
-
-      button {
-        background-color: #9a82ff; /* Tonal button */
-        color: #1c1b1f; /* On-variant */
-        padding: 12px 18px;
-        border: none;
-        border-radius: 999px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s ease, box-shadow 0.3s ease, background-color 0.3s ease;
-        width: 60%; /* Make button width proportional */
-        min-width: 140px; /* Ensure minimum width */
-        box-shadow: 0 4px 12px rgba(154, 130, 255, 0.4);
-      }
-
-      button:hover {
-        background-color: #b5a2ff; /* Darker blue on hover */
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(154, 130, 255, 0.45);
-      }
-
-      button:active {
-        transform: translateY(0); /* Slightly shrink on click */
-        box-shadow: 0 2px 8px rgba(154, 130, 255, 0.35);
-      }
-
-      button:disabled {
-        background-color: rgba(154, 130, 255, 0.35); /* Light blue when disabled */
-        color: rgba(28, 27, 31, 0.6); /* Ensure text is readable */
-        cursor: not-allowed; /* Change cursor to indicate disabled state */
-        box-shadow: none;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="form-container">
-      <h2 style="text-align: center">Edit Prompt</h2>
-      <form id="form">
-        <textarea
-          id="template-content"
-          placeholder="Enter your prompt template here..."
-          spellcheck="true"
-        ></textarea>
-        <button type="submit">Save Prompt</button>
-      </form>
-    </div>
-    <script src="../dist/save_edited_prompt.js"></script>
-    <script>
-      (() => {
-        const root = document.documentElement;
-        const body = document.body;
-        const formContainer = document.querySelector(".form-container");
-
-        if (!formContainer) {
-          return;
-        }
-
-        const getViewportHeight = () =>
-          window.visualViewport?.height ?? document.documentElement.clientHeight;
-
-        const updateOverflowState = () => {
-          const viewportHeight = getViewportHeight();
-          const styles = window.getComputedStyle(body);
-          const paddingTop = parseFloat(styles.paddingTop) || 0;
-          const paddingBottom = parseFloat(styles.paddingBottom) || 0;
-          const totalHeight =
-            formContainer.getBoundingClientRect().height + paddingTop + paddingBottom;
-
-          body.classList.toggle(
-            "is-overflowing",
-            totalHeight - viewportHeight > 1,
-          );
-        };
-
-        const setViewportHeight = () => {
-          const viewportHeight = getViewportHeight();
-          root.style.setProperty(
-            "--app-viewport-height",
-            `${Math.max(viewportHeight, 1) * 0.01}px`,
-          );
-          updateOverflowState();
-        };
-
-        setViewportHeight();
-
-        const handleViewportChange = () => setViewportHeight();
-
-        window.visualViewport?.addEventListener("resize", handleViewportChange);
-        window.visualViewport?.addEventListener("scroll", handleViewportChange);
-        window.addEventListener("resize", handleViewportChange, { passive: true });
-        window.addEventListener("orientationchange", handleViewportChange);
-
-        let resizeObserver;
-        if ("ResizeObserver" in window) {
-          resizeObserver = new ResizeObserver(updateOverflowState);
-          resizeObserver.observe(formContainer);
-        }
-
-        window.addEventListener(
-          "pagehide",
-          () => {
-            window.visualViewport?.removeEventListener("resize", handleViewportChange);
-            window.visualViewport?.removeEventListener("scroll", handleViewportChange);
-            window.removeEventListener("resize", handleViewportChange);
-            window.removeEventListener("orientationchange", handleViewportChange);
-            resizeObserver?.disconnect();
-          },
-          { once: true },
+        body.classList.toggle(
+          "is-overflowing",
+          totalHeight - viewportHeight > 1,
         );
-      })();
-    </script>
-  </body>
+      };
+
+      const setViewportHeight = () => {
+        const viewportHeight = getViewportHeight();
+        root.style.setProperty(
+          "--app-viewport-height",
+          `${Math.max(viewportHeight, 1) * 0.01}px`,
+        );
+        updateOverflowState();
+      };
+
+      setViewportHeight();
+
+      const handleViewportChange = () => setViewportHeight();
+
+      window.visualViewport?.addEventListener("resize", handleViewportChange);
+      window.visualViewport?.addEventListener("scroll", handleViewportChange);
+      window.addEventListener("resize", handleViewportChange, { passive: true });
+      window.addEventListener("orientationchange", handleViewportChange);
+
+      let resizeObserver;
+      if ("ResizeObserver" in window) {
+        resizeObserver = new ResizeObserver(updateOverflowState);
+        resizeObserver.observe(formContainer);
+      }
+
+      window.addEventListener(
+        "pagehide",
+        () => {
+          window.visualViewport?.removeEventListener("resize", handleViewportChange);
+          window.visualViewport?.removeEventListener("scroll", handleViewportChange);
+          window.removeEventListener("resize", handleViewportChange);
+          window.removeEventListener("orientationchange", handleViewportChange);
+          resizeObserver?.disconnect();
+        },
+        { once: true },
+      );
+    })();
+  </script>
+</body>
+
 </html>

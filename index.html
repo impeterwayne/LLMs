@@ -3,30 +3,53 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com;" />
   <title>Multi-LLM Interface</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
       color-scheme: dark;
-      --surface: #1f1f1f;
-      --surface-high: #272727;
-      --surface-variant: #2f2f2f;
-      --outline: #3d3d3d;
-      --text-primary: #f5f5f5;
-      --text-secondary: #c7c7c7;
+
+      /* ── Surface palette ── */
+      --bg: #0e0e10;
+      --surface: #18181b;
+      --surface-high: #1f1f23;
+      --surface-variant: #27272a;
+
+      /* ── Text ── */
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+
+      /* ── Accent ── */
       --accent: #8ab4f8;
       --accent-hover: #6ea3f7;
-      --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
-      --radius-large: 20px;
-      --radius-medium: 14px;
+      --accent-dim: rgba(138, 180, 248, 0.12);
+      --accent-glow: rgba(138, 180, 248, 0.20);
+
+      /* ── Borders ── */
+      --border: #27272a;
+      --border-subtle: rgba(255, 255, 255, 0.06);
+
+      /* ── Radii ── */
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+
+      /* ── Layout ── */
       --app-viewport-height: 1vh;
       --sidebar-width: 280px;
       --sidebar-max: 280px;
       --sessions-button-size: 36px;
-      /* unified size for header buttons */
       --sessions-header-pad: 8px;
-      /* consistent padding around header items */
       --sidebar-rail: calc(var(--sessions-button-size) + (2 * var(--sessions-header-pad)));
+      --header-height: 44px;
+
+      /* ── Typography ── */
+      --font: "Inter", system-ui, -apple-system, sans-serif;
     }
 
     * {
@@ -43,12 +66,11 @@
       height: 100vh;
       min-height: 100vh;
       padding: 0;
-      background: radial-gradient(circle at top, #2a2a2a, #141414 65%, #0f0f0f);
-      font-family: "Inter", "Segoe UI", sans-serif;
+      background: var(--bg);
+      font-family: var(--font);
       color: var(--text-primary);
-      transition: justify-content 0.3s ease;
+      transition: justify-content 0.2s ease;
       overflow: hidden;
-      /* avoid page scroll; layout fits viewport */
     }
 
     body.is-overflowing {
@@ -62,112 +84,130 @@
       }
     }
 
+    /* ── Reduced motion ── */
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ── Provider Toggles ── */
     .provider-toggle {
       flex: 1;
-      min-height: 40px;
-      font-size: 14px;
-      font-weight: 600;
-      padding: 8px;
-      border-radius: var(--radius-medium);
-      border: 1px solid var(--outline);
-      background: linear-gradient(180deg, var(--surface-high), var(--surface-variant));
-      color: var(--text-secondary);
+      min-height: 36px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease,
-        border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
-      opacity: 0.6;
-      /* default disabled state */
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
 
     .provider-toggle.active {
-      opacity: 1;
-      border-color: var(--accent);
       color: var(--text-primary);
-      box-shadow: 0 4px 12px rgba(138, 180, 248, 0.25);
+      border-color: var(--accent);
+      background: var(--accent-dim);
     }
 
     .provider-toggle:hover {
-      border-color: var(--accent);
-      color: var(--text-primary);
-      transform: translateY(-1px);
+      color: var(--text-secondary);
+      border-color: var(--text-muted);
     }
 
-    /* Research provider styling (Google AI, Reddit) */
+    .provider-toggle.active:hover {
+      color: var(--text-primary);
+      border-color: var(--accent);
+    }
+
+    /* Research provider accent */
     .provider-toggle.provider-research.active {
       border-color: #34a853;
-      box-shadow: 0 4px 12px rgba(52, 168, 83, 0.3);
+      background: rgba(52, 168, 83, 0.10);
     }
 
     .provider-toggle.provider-research:hover {
-      border-color: #34a853;
+      border-color: rgba(52, 168, 83, 0.5);
+    }
+
+    .provider-toggle svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
     }
 
     /* Provider divider */
     .provider-divider {
       width: 1px;
-      height: 28px;
-      background: var(--outline);
+      height: 24px;
+      background: var(--border);
       margin: 0 4px;
       align-self: center;
-      opacity: 0.5;
     }
 
+    /* ── Prompt Area ── */
     #prompt-area {
       position: fixed;
       left: min(var(--sidebar-width, 280px), var(--sidebar-max, 280px));
       right: 0;
       bottom: 0;
       display: flex;
-      gap: 12px;
-      padding: 14px;
-      border-radius: 0;
-      min-height: 120px;
+      gap: 10px;
+      padding: 12px;
+      min-height: 110px;
       align-items: stretch;
       width: auto;
-      background-color: var(--surface);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      box-shadow: var(--shadow);
+      background: var(--surface);
+      border-top: 1px solid var(--border);
       flex-direction: column;
-      /* make room for header + input */
     }
 
     #prompt-area.drag-active {
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.35);
       background: linear-gradient(135deg,
-          rgba(138, 180, 248, 0.12),
-          rgba(138, 180, 248, 0.05));
+          var(--accent-dim),
+          transparent);
     }
 
     #prompt-input {
       flex: 1;
-      padding: 14px;
-      font-size: 18px;
-      font-family: "Inter", "Segoe UI", sans-serif;
+      padding: 12px 14px;
+      font-size: 15px;
+      font-family: var(--font);
       line-height: 1.6;
       background: var(--surface-high);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-large);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
       color: var(--text-primary);
       resize: none;
-      transition: border 0.2s ease, box-shadow 0.2s ease;
+      transition: border-color 0.15s;
     }
 
     #prompt-input::placeholder {
-      color: var(--text-secondary);
+      color: var(--text-muted);
     }
 
     #prompt-input:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.25);
     }
 
+    /* ── Button Group ── */
     .button-group {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      width: 208px;
+      width: 180px;
     }
 
     .dropdown,
@@ -183,17 +223,16 @@
     #dropdown-button,
     .utility-button {
       width: 100%;
-      min-height: 46px;
-      font-size: 15px;
+      min-height: 40px;
+      font-size: 13px;
       font-weight: 600;
-      padding: 10px 14px;
-      border-radius: var(--radius-medium);
-      border: 1px solid var(--outline);
-      background: linear-gradient(180deg, var(--surface-high), var(--surface-variant));
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface-high);
       color: var(--text-secondary);
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease,
-        border-color 0.15s ease, color 0.15s ease;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
       text-align: center;
     }
 
@@ -201,48 +240,49 @@
     .utility-button:hover {
       border-color: var(--accent);
       color: var(--text-primary);
-      box-shadow: 0 6px 20px rgba(138, 180, 248, 0.25);
-      transform: translateY(-1px);
     }
 
     .utility-button {
-      background: linear-gradient(180deg, var(--accent), var(--accent-hover));
-      color: #0b182f;
+      background: var(--accent);
+      color: var(--bg);
       border-color: transparent;
+      font-weight: 600;
     }
 
     .utility-button:hover {
-      box-shadow: 0 10px 28px rgba(138, 180, 248, 0.35);
+      background: var(--accent-hover);
+      color: var(--bg);
     }
 
     .dropdown-content {
       display: none;
       position: absolute;
-      top: calc(100% + 8px);
+      top: calc(100% + 6px);
       left: 0;
       width: 100%;
       background-color: var(--surface-high);
-      border-radius: var(--radius-medium);
-      border: 1px solid var(--outline);
-      padding: 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      padding: 6px;
       max-height: 200px;
       overflow-y: auto;
-      box-shadow: var(--shadow);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
       z-index: 1000;
     }
 
     .dropdown-item {
       width: 100%;
-      padding: 10px 12px;
-      border-radius: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
       cursor: pointer;
       font-weight: 500;
+      font-size: 13px;
       color: var(--text-secondary);
-      transition: background-color 0.15s ease, color 0.15s ease;
+      transition: background-color 0.12s, color 0.12s;
     }
 
     .dropdown-item:hover {
-      background-color: rgba(138, 180, 248, 0.12);
+      background-color: var(--accent-dim);
       color: var(--text-primary);
     }
 
@@ -250,40 +290,37 @@
       display: block;
     }
 
-    /* Chat header inside prompt area */
+    /* ── Chat Header ── */
     .chat-header {
       display: flex;
       gap: 6px;
       align-items: center;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
 
-    /* Chat input row */
+    /* ── Chat Input Row ── */
     .chat-input-row {
       display: flex;
-      gap: 14px;
+      gap: 12px;
       align-items: stretch;
     }
 
-    /* Sessions Sidebar */
+    /* ── Sessions Sidebar ── */
     #sessions-sidebar {
       position: fixed;
       top: 0;
       left: 0;
       bottom: 0;
-      /* match full app window height */
       width: min(var(--sidebar-width, 280px), var(--sidebar-max, 280px));
       max-width: var(--sidebar-max, 280px);
       background: var(--surface);
-      border-right: 1px solid var(--outline);
-      box-shadow: var(--shadow);
+      border-right: 1px solid var(--border);
       overflow: hidden;
       display: flex;
       flex-direction: column;
       z-index: 10;
     }
 
-    /* collapse is managed via body.sidebar-collapsed rules */
     #sessions-sidebar.no-transition {
       transition: none !important;
     }
@@ -305,12 +342,29 @@
 
     body.sidebar-collapsed #sessions-sidebar .sessions-header {
       border-bottom: none;
-      padding: 10px;
+      padding: 6px;
+      justify-content: center;
+      align-items: center;
+      gap: 0;
     }
 
-    body.sidebar-collapsed #sessions-sidebar #toggle-sessions {
+    body.sidebar-collapsed #sessions-sidebar .sessions-actions {
+      gap: 4px;
+      flex-direction: column;
+      align-items: center;
       width: 100%;
-      height: 28px;
+    }
+
+    body.sidebar-collapsed #sessions-sidebar #toggle-sessions,
+    body.sidebar-collapsed #sessions-sidebar #collapsed-new-session {
+      width: 32px;
+      height: 32px;
+      margin: 0 auto;
+      padding: 0;
+    }
+
+    body.sidebar-collapsed #sessions-sidebar #collapsed-new-session {
+      display: inline-flex;
     }
 
     .sessions-header {
@@ -318,49 +372,72 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: var(--sessions-header-pad);
-      border-bottom: 1px solid var(--outline);
+      padding: 10px 10px;
+      border-bottom: 1px solid var(--border);
     }
 
     .sessions-title {
-      font-weight: 700;
-      font-size: 14px;
-      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
     }
 
     .sessions-actions {
       display: flex;
-      gap: 6px;
+      gap: 4px;
     }
 
     .sessions-btn {
-      border: 1px solid var(--outline);
-      background: var(--surface-high);
+      border: 1px solid var(--border);
+      background: transparent;
       color: var(--text-secondary);
-      border-radius: 8px;
-      height: var(--sessions-button-size);
-      padding: 0 12px;
+      border-radius: 6px;
+      height: 32px;
+      padding: 0 10px;
       font-size: 12px;
+      font-weight: 500;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 4px;
       box-sizing: border-box;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+    }
+
+    .sessions-btn:hover {
+      background: var(--accent-dim);
+      border-color: transparent;
+      color: var(--text-primary);
+    }
+
+    .sessions-btn svg,
+    .sessions-icon-btn svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
     }
 
     .sessions-icon-btn {
-      border: 1px solid var(--outline);
-      background: var(--surface-high);
-      color: var(--text-secondary);
-      border-radius: 8px;
-      width: var(--sessions-button-size);
-      height: var(--sessions-button-size);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
       cursor: pointer;
       box-sizing: border-box;
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .sessions-icon-btn:hover {
+      background: var(--accent-dim);
+      color: var(--text-primary);
     }
 
     .collapsed-only {
@@ -370,7 +447,7 @@
     .sessions-list {
       flex: 1;
       overflow-y: auto;
-      padding: 8px;
+      padding: 6px;
     }
 
     .session-item {
@@ -378,105 +455,54 @@
       align-items: center;
       gap: 8px;
       padding: 8px 10px;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
       color: var(--text-secondary);
+      font-size: 13px;
+      transition: background 0.12s, color 0.12s;
     }
 
     .session-item:hover {
-      background: rgba(138, 180, 248, 0.10);
+      background: var(--accent-dim);
       color: var(--text-primary);
     }
 
     .session-item.active {
-      background: rgba(138, 180, 248, 0.18);
+      background: var(--accent-glow);
       color: var(--text-primary);
     }
 
     .sessions-footer {
       padding: 8px;
-      border-top: 1px solid var(--outline);
+      border-top: 1px solid var(--border);
     }
 
     .sessions-footer .sessions-btn {
       width: 100%;
     }
 
-    /* Collapse adjustments */
-    body.sidebar-collapsed #prompt-area {
-      left: var(--sidebar-rail, 40px);
-    }
-
-    body.sidebar-collapsed #sessions-sidebar {
-      width: var(--sidebar-rail, 40px) !important;
-    }
-
-    body.sidebar-collapsed #sessions-sidebar .sessions-title,
-    body.sidebar-collapsed #sessions-sidebar #new-session,
-    body.sidebar-collapsed #sessions-sidebar .sessions-list,
-    body.sidebar-collapsed #sessions-sidebar .sessions-footer {
-      display: none;
-    }
-
-    body.sidebar-collapsed #sessions-sidebar .sessions-header {
-      border-bottom: none;
-      padding: var(--sessions-header-pad);
-      padding-inline-end: 0;
-      /* no end margin after collapse */
-      justify-content: center;
-      align-items: center;
-      gap: 0;
-    }
-
-    body.sidebar-collapsed #sessions-sidebar .sessions-actions {
-      gap: 6px;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    /* Tighter start margin and small end spacing for the rail icon */
-    body.sidebar-collapsed #sessions-sidebar #toggle-sessions {
-      margin-block: 0;
-      margin-inline-start: 2px;
-      margin-inline-end: 6px;
-      width: var(--sessions-button-size);
-      height: var(--sessions-button-size);
-    }
-
-    body.sidebar-collapsed #sessions-sidebar #collapsed-new-session {
-      display: inline-flex;
-      margin-block: 0;
-      margin-inline-start: 2px;
-      margin-inline-end: 6px;
-      width: var(--sessions-button-size);
-      height: var(--sessions-button-size);
-
-    }
-
-    /* View Headers */
+    /* ── View Headers ── */
     #view-headers-container {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
-      height: 44px;
-      /* Matches HEADER_HEIGHT in main.ts */
+      height: var(--header-height);
       pointer-events: none;
-      /* Let clicks pass through empty areas */
       z-index: 100;
     }
 
     .view-header {
       position: absolute;
       top: 0;
-      height: 44px;
+      height: var(--header-height);
       display: flex;
       align-items: center;
       gap: 8px;
       padding: 0 8px;
       background: var(--surface);
-      border-bottom: 1px solid var(--outline);
-      border-right: 1px solid var(--outline);
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
       pointer-events: auto;
       box-sizing: border-box;
     }
@@ -485,11 +511,12 @@
       flex: 1;
       height: 28px;
       background: var(--surface-high);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-medium);
+      border: 1px solid var(--border);
+      border-radius: 6px;
       color: var(--text-primary);
       padding: 0 10px;
       font-size: 13px;
+      font-family: var(--font);
       outline: none;
       transition: border-color 0.15s;
     }
@@ -502,19 +529,18 @@
       height: 28px;
       padding: 0 10px;
       background: var(--surface-high);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-medium);
+      border: 1px solid var(--border);
+      border-radius: 6px;
       color: var(--text-secondary);
       font-size: 12px;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: border-color 0.15s, color 0.15s;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .view-header button:hover {
-      background: var(--surface-variant);
       color: var(--text-primary);
       border-color: var(--accent);
     }
@@ -541,13 +567,30 @@
 <body class="sidebar-collapsed">
   <aside id="sessions-sidebar">
     <div class="sessions-header">
-      <div class="sessions-title">Recent sessions</div>
+      <div class="sessions-title">Sessions</div>
       <div class="sessions-actions">
-        <button class="sessions-btn" id="new-session">+ New</button>
-        <button class="sessions-icon-btn" id="toggle-sessions" title="Toggle sidebar">></button>
+        <button class="sessions-btn" id="new-session">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
+          New
+        </button>
+        <button class="sessions-icon-btn" id="toggle-sessions" title="Toggle sidebar" aria-label="Toggle sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M3 3h7v18H3z" />
+            <path d="M14 9l3 3-3 3" />
+          </svg>
+        </button>
         <button class="sessions-icon-btn collapsed-only" id="collapsed-new-session" title="New session"
           aria-label="New session">
-          +
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
         </button>
       </div>
     </div>
@@ -565,8 +608,21 @@
       <button class="provider-toggle" data-provider="grok">Grok</button>
       <button class="provider-toggle" data-provider="deepseek">DeepSeek</button>
       <span class="provider-divider"></span>
-      <button class="provider-toggle provider-research" data-provider="googleai">🔍 Google</button>
-      <button class="provider-toggle provider-research" data-provider="reddit">📱 Reddit</button>
+      <button class="provider-toggle provider-research" data-provider="googleai">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        Google
+      </button>
+      <button class="provider-toggle provider-research" data-provider="reddit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        Reddit
+      </button>
     </div>
     <div class="chat-input-row">
       <textarea id="prompt-input" rows="3" placeholder="Press Ctrl + Enter to send prompt"></textarea>

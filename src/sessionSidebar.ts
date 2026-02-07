@@ -25,13 +25,13 @@ function getStoredWidth(): number {
 function setStoredWidth(px: number) {
   try {
     localStorage.setItem("sessionsSidebar.width", String(Math.max(180, Math.round(px))));
-  } catch {}
+  } catch { }
 }
 
 function setCssSidebarWidth(px: number) {
   try {
     document.documentElement.style.setProperty("--sidebar-width", `${Math.max(0, Math.round(px))}px`);
-  } catch {}
+  } catch { }
 }
 
 function getRailWidth(): number {
@@ -87,7 +87,7 @@ function toggleSidebar(el: HTMLElement) {
       el.classList.add("collapsed");
       document.body.classList.add("sidebar-collapsed");
     });
-    try { localStorage.setItem("sessionsSidebar.collapsed", "true"); } catch {}
+    try { localStorage.setItem("sessionsSidebar.collapsed", "true"); } catch { }
     // First notify quickly, then re-measure next frame for exact pixels
     syncSidebarSize(el);
     requestAnimationFrame(() => syncSidebarSize(el));
@@ -99,7 +99,7 @@ function toggleSidebar(el: HTMLElement) {
     el.classList.remove("collapsed");
     document.body.classList.remove("sidebar-collapsed");
   });
-  try { localStorage.setItem("sessionsSidebar.collapsed", "false"); } catch {}
+  try { localStorage.setItem("sessionsSidebar.collapsed", "false"); } catch { }
   const restored = getStoredWidth();
   setCssSidebarWidth(restored);
   notifySidebarSize(restored);
@@ -187,6 +187,10 @@ export function initSessionSidebar() {
     }
   };
 
+  const ICON_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v18H3z"/><path d="M14 9l3 3-3 3"/></svg>';
+  const ICON_COLLAPSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v18h-7z"/><path d="M10 15l-3-3 3-3"/></svg>';
+  const setToggleIcon = (collapsed: boolean) => { toggleBtn.innerHTML = collapsed ? ICON_EXPAND : ICON_COLLAPSE; };
+
   // Restore collapsed state
   try {
     const persisted = localStorage.getItem("sessionsSidebar.collapsed");
@@ -194,13 +198,12 @@ export function initSessionSidebar() {
     if (collapsed) {
       sidebar.classList.add("collapsed");
       document.body.classList.add("sidebar-collapsed");
-      toggleBtn.textContent = ">"; // point right to expand
     } else {
       sidebar.classList.remove("collapsed");
       document.body.classList.remove("sidebar-collapsed");
-      toggleBtn.textContent = "<"; // point left to collapse
     }
-  } catch {}
+    setToggleIcon(collapsed);
+  } catch { }
 
   // Initial width and size sync
   if (sidebar.classList.contains("collapsed")) {
@@ -221,10 +224,8 @@ export function initSessionSidebar() {
 
   // Events
   toggleBtn.addEventListener("click", () => {
-    const wasCollapsed = sidebar.classList.contains("collapsed");
     toggleSidebar(sidebar);
-    const nowCollapsed = sidebar.classList.contains("collapsed");
-    toggleBtn.textContent = nowCollapsed ? ">" : "<";
+    setToggleIcon(sidebar.classList.contains("collapsed"));
   });
   newBtn.addEventListener("click", createNewSession);
   collapsedNewBtn?.addEventListener("click", createNewSession);
@@ -271,8 +272,8 @@ function ensureSessionMenu(): HTMLDivElement {
   menu.style.position = "fixed";
   menu.style.zIndex = "9999";
   menu.style.minWidth = "160px";
-  menu.style.background = "var(--surface-high, #272727)";
-  menu.style.border = "1px solid var(--outline, #3d3d3d)";
+  menu.style.background = "var(--surface-high, #1f1f23)";
+  menu.style.border = "1px solid var(--border, #27272a)";
   menu.style.borderRadius = "8px";
   menu.style.boxShadow = "0 12px 28px rgba(0,0,0,0.45)";
   menu.style.padding = "4px";
@@ -287,11 +288,13 @@ function ensureSessionMenu(): HTMLDivElement {
     btn.style.padding = "8px 10px";
     btn.style.border = "none";
     btn.style.background = "transparent";
-    btn.style.color = "var(--text-secondary, #c7c7c7)";
+    btn.style.color = "var(--text-secondary, #a1a1aa)";
     btn.style.borderRadius = "6px";
+    btn.style.fontSize = "13px";
+    btn.style.fontFamily = "var(--font, inherit)";
     btn.style.cursor = "pointer";
-    btn.onmouseenter = () => { btn.style.background = "rgba(138,180,248,0.12)"; btn.style.color = "var(--text-primary, #fff)"; };
-    btn.onmouseleave = () => { btn.style.background = "transparent"; btn.style.color = "var(--text-secondary, #c7c7c7)"; };
+    btn.onmouseenter = () => { btn.style.background = "rgba(138,180,248,0.12)"; btn.style.color = "var(--text-primary, #f4f4f5)"; };
+    btn.onmouseleave = () => { btn.style.background = "transparent"; btn.style.color = "var(--text-secondary, #a1a1aa)"; };
     return btn;
   };
 
