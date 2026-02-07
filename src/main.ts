@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url"; // Import fileURLToPath
 import Store from "electron-store"; // Import electron-store
 
 const require = createRequire(import.meta.url);
-const store = new Store(); // Create an instance of electron-store (prompts)
+
 const sessionStore = new Store({ name: "sessions" }); // Separate store for sessions
 
 interface CustomBrowserView extends WebContentsView {
@@ -48,10 +48,10 @@ if (require("electron-squirrel-startup")) app.quit();
 remote.initialize();
 
 let mainWindow: BrowserWindow;
-let formWindow: BrowserWindow | null; // Allow formWindow to be null
+
 let sessionsWindow: BrowserWindow | null = null;
 let linkSessionsToMain = true; // keep sessions window docked to main
-let pendingRowSelectedKey: string | null = null; // Store the key of the selected row for later use
+
 
 const views: CustomBrowserView[] = [];
 let promptAreaHeight = 0; // reserved bottom space for chat pane
@@ -571,21 +571,7 @@ function createWindow(): void {
   });
 }
 
-function createFormWindow() {
-  formWindow = new BrowserWindow({
-    width: 900,
-    height: 900,
-    parent: mainWindow,
-    modal: true,
-    webPreferences: {
-      preload: path.join(__dirname, "..", "dist", "form_preload.js"), // Use the same preload script
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
 
-  formWindow.loadFile(path.join(__dirname, "..", "src", "form.html"));
-}
 
 function updateZoomFactor(): void {
   views.forEach((view) => {
@@ -801,12 +787,7 @@ ipcMain.on("ui-chrome-size", (_evt, payload: { bottom?: number; right?: number }
 });
 
 
-ipcMain.on("close-form-window", () => {
-  if (formWindow) {
-    formWindow.close();
-    formWindow = null; // Clear the reference
-  }
-});
+
 
 ipcMain.handle("get-current-urls", () => {
   return views.map((view) => {
@@ -909,28 +890,9 @@ ipcMain.handle("copy-all-answers", async () => {
   return { success: true, count: results.length };
 });
 
-ipcMain.on("save-prompt", (event, promptValue: string) => {
-  const timestamp = new Date().getTime().toString();
-  store.set(timestamp, promptValue);
 
-  console.log("Prompt saved with key:", timestamp);
-});
 
-// Add handler to get stored prompts
-ipcMain.handle("get-prompts", () => {
-  return store.store; // Returns all stored data
-});
 
-ipcMain.on("paste-prompt", (_: IpcMainEvent, prompt: string) => {
-  mainWindow.webContents.send("inject-prompt", prompt);
-
-  views.forEach((view: CustomBrowserView) => {
-    injectPromptIntoView(view, prompt);
-  });
-
-  // Refocus main window so user's prompt input keeps focus
-  mainWindow.webContents.focus();
-});
 
 ipcMain.on("enter-prompt", (_: IpcMainEvent, prompt: string) => {
   views.forEach((view: CustomBrowserView) => {
@@ -1171,23 +1133,7 @@ ipcMain.handle("sessions:delete", (_evt, { id }: { id: SessionId }) => {
   mainWindow.webContents.send("sessions:changed", { updatedIds: [id] });
 });
 
-ipcMain.on("delete-prompt-by-value", (event, value: string) => {
-  value = value.normalize("NFKC");
-  // Get all key-value pairs from the store
-  const allEntries = store.store; // `store.store` gives the entire object
 
-  // Find the key that matches the given value
-  const matchingKey = Object.keys(allEntries).find(
-    (key) => allEntries[key] === value,
-  );
-
-  if (matchingKey) {
-    store.delete(matchingKey);
-    console.log(`Deleted entry with key: ${matchingKey} and value: ${value}`);
-  } else {
-    console.error(`No matching entry found for value: ${value}`);
-  }
-});
 
 ipcMain.on("open-claude", (_, prompt: string) => {
   if (prompt === "open claude now") {
@@ -1520,94 +1466,4 @@ ipcMain.on("close-reddit", (_, prompt: string) => {
   }
 });
 
-ipcMain.on("open-edit-view", (_, prompt: string) => {
-  console.log("Opening edit view for prompt:", prompt);
-  prompt = prompt.normalize("NFKC");
 
-  const editWindow = new BrowserWindow({
-    width: 500,
-    height: 600,
-    parent: formWindow || mainWindow, // Use mainWindow as a fallback if formWindow is null
-    modal: true, // Make it a modal window
-    webPreferences: {
-      preload: path.join(__dirname, "..", "dist", "form_preload.js"), // Use the same preload script
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  editWindow.loadFile(path.join(__dirname, "..", "src", "edit_prompt.html"));
-  // Optionally, inject the prompt into the textarea
-  editWindow.webContents.once("did-finish-load", () => {
-    editWindow.webContents.executeJavaScript(`
-      const textarea = document.getElementById('template-content');
-      if (textarea) {
-        textarea.value = \`${prompt}\`;
-      }
-    `);
-  });
-
-  console.log("Edit window created.");
-});
-
-ipcMain.on("edit-prompt-ready", (event) => {
-  if (pendingRowSelectedKey) {
-    event.sender.send("row-selected", pendingRowSelectedKey);
-    console.log(
-      `Sent row-selected message to edit_prompt.html with key: ${pendingRowSelectedKey} (on renderer ready)`,
-    );
-    pendingRowSelectedKey = null;
-  } else {
-    console.log("edit-prompt-ready received, but no pending key to send.");
-  }
-});
-
-ipcMain.on(
-  "update-prompt",
-  (_, { key, value }: { key: string; value: string }) => {
-    if (store.has(key)) {
-      store.set(key, value);
-      console.log(`Updated prompt with key "${key}" to: "${value}"`);
-    } else {
-      console.error(`No entry found for key: "${key}"`);
-    }
-  },
-);
-
-ipcMain.on("row-selected", (_, key: string) => {
-  console.log(`Row selected with key: ${key}`);
-  pendingRowSelectedKey = key;
-});
-
-// Add handler to fetch the key from the store based on the value.
-ipcMain.handle("get-key-by-value", (_, value: string) => {
-  value = value.normalize("NFKC"); // Normalize the value for consistency
-  const allEntries = store.store; // Get all key-value pairs from the store
-
-  console.log("Store contents:", allEntries); // Log the store contents
-
-  // Find the key that matches the given value
-  const matchingKey = Object.keys(allEntries).find(
-    (key) => allEntries[key] === value,
-  );
-
-  if (matchingKey) {
-    console.log(`Found key "${matchingKey}" for value: "${value}"`);
-    return matchingKey;
-  } else {
-    console.error(`No matching key found for value: "${value}"`);
-    return null;
-  }
-});
-
-ipcMain.on("close-edit-window", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (win) {
-    win.close();
-
-    // Notify the form window to refresh the table
-    if (formWindow && !formWindow.isDestroyed()) {
-      formWindow.webContents.send("refresh-prompt-table");
-    }
-  }
-});
