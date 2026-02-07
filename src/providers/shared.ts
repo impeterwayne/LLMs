@@ -1,3 +1,7 @@
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
 /**
  * Shared JavaScript snippets for page-context execution.
  *
@@ -14,6 +18,39 @@
  * Convention: Each snippet defines helper functions prefixed with __
  * to avoid collisions with page-level code.
  */
+
+// ─── Script Loader ───────────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const SCRIPTS_DIR = join(__dirname, 'scripts');
+
+/**
+ * Load a JavaScript script file from the scripts directory and perform
+ * placeholder replacements for dynamic values (selectors, prompts, etc.).
+ *
+ * @param provider - The provider folder name (e.g. "chatgpt", "gemini")
+ * @param script   - The script filename without extension (e.g. "inject", "send")
+ * @param replacements - Map of placeholder strings to their replacement values.
+ *                       Placeholders in the .js file look like `__SELECTORS__`
+ *                       and get replaced with the JSON-stringified value.
+ * @param sharedSnippets - Shared JS snippet strings to prepend (from this file)
+ */
+export function loadScript(
+  provider: string,
+  script: string,
+  replacements: Record<string, string> = {},
+  ...sharedSnippets: string[]
+): string {
+  const filePath = join(SCRIPTS_DIR, provider, `${script}.js`);
+  let content = readFileSync(filePath, 'utf-8');
+  for (const [placeholder, value] of Object.entries(replacements)) {
+    content = content.split(placeholder).join(value);
+  }
+  return sharedSnippets.length > 0
+    ? compose(...sharedSnippets) + '\n' + content
+    : content;
+}
 
 // ─── DOM Utilities ───────────────────────────────────────────────
 

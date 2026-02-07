@@ -1,5 +1,5 @@
 import { Provider } from './types.js';
-import { JS_FIND_FIRST, JS_CLICK_FIRST_BUTTON, JS_WAIT, JS_FILE_HELPERS, JS_SIMULATE_DND, compose } from './shared.js';
+import { JS_FIND_FIRST, JS_CLICK_FIRST_BUTTON, JS_WAIT, JS_FILE_HELPERS, JS_SIMULATE_DND, loadScript } from './shared.js';
 
 // ═══════════════════════════════════════════════════════════════
 // SELECTORS — Update these when ChatGPT changes its DOM
@@ -27,71 +27,28 @@ export const chatgpt: Provider = {
     matchUrl: (url) => /chatgpt\.com/i.test(url),
 
     buildInjectScript(prompt: string): string {
-        return `
-      ${JS_FIND_FIRST}
-      ((prompt) => {
-        const el = __findFirst(${JSON.stringify(SELECTORS.editor)});
-        if (el) {
-          el.innerText = prompt;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          console.log('[ChatGPT] Prompt injected');
-        } else {
-          console.error('[ChatGPT] Editor element not found');
-        }
-      })(${JSON.stringify(prompt)});
-    `;
+        return loadScript('chatgpt', 'inject', {
+            '__SELECTORS__': JSON.stringify(SELECTORS.editor),
+            '__PROMPT__': JSON.stringify(prompt),
+        }, JS_FIND_FIRST);
     },
 
     buildSendScript(): string {
-        return `
-      ${JS_CLICK_FIRST_BUTTON}
-      (() => {
-        const btn = __clickFirstButton(${JSON.stringify(SELECTORS.sendButton)});
-        if (btn) console.log('[ChatGPT] Send button clicked');
-        else console.error('[ChatGPT] Send button not found');
-      })();
-    `;
+        return loadScript('chatgpt', 'send', {
+            '__SELECTORS__': JSON.stringify(SELECTORS.sendButton),
+        }, JS_CLICK_FIRST_BUTTON);
     },
 
     buildFileDropScript(files): string {
-        return `
-      ${compose(JS_WAIT, JS_FILE_HELPERS, JS_FIND_FIRST, JS_SIMULATE_DND)}
-      (async (rawFiles) => {
-        try {
-          const generatedFiles = __createFiles(rawFiles);
-          const target = __findFirst(${JSON.stringify(SELECTORS.dropTarget)});
-          const ok = await __simulateDnD(target, generatedFiles);
-          if (ok) console.log('[ChatGPT] ✓ File drop complete');
-          else console.error('[ChatGPT] ❌ File drop failed');
-          return ok;
-        } catch (e) { console.error('[ChatGPT] Fatal:', e); return false; }
-      })(${JSON.stringify(files)});
-    `;
+        return loadScript('chatgpt', 'fileDrop', {
+            '__SELECTORS__': JSON.stringify(SELECTORS.dropTarget),
+            '__FILES__': JSON.stringify(files),
+        }, JS_WAIT, JS_FILE_HELPERS, JS_FIND_FIRST, JS_SIMULATE_DND);
     },
 
     buildCopyScript(): string {
-        return `
-      (async () => {
-        const selectors = ${JSON.stringify(SELECTORS.copyButton)};
-        let copyButtons = [];
-        for (const sel of selectors) {
-          copyButtons = document.querySelectorAll(sel);
-          if (copyButtons.length > 0) break;
-        }
-        if (copyButtons.length === 0) return null;
-
-        const lastCopyBtn = copyButtons[copyButtons.length - 1];
-        const parent = lastCopyBtn.closest('div[class*="group"]') || lastCopyBtn.parentElement;
-        if (parent) {
-          parent.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-          await new Promise(r => setTimeout(r, 200));
-        }
-        lastCopyBtn.click();
-        await new Promise(r => setTimeout(r, 300));
-
-        try { return await navigator.clipboard.readText(); }
-        catch (e) { return '__CLIPBOARD_READ_FAILED__'; }
-      })()
-    `;
+        return loadScript('chatgpt', 'copy', {
+            '__SELECTORS__': JSON.stringify(SELECTORS.copyButton),
+        });
     },
 };
