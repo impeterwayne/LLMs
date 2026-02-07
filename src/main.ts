@@ -498,9 +498,7 @@ function restoreLastActiveSessionAtStartup(): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 2000,
-    height: 1100,
-    center: true,
+    show: false, // Start hidden so we can maximize before showing
     backgroundColor: "#000000",
     autoHideMenuBar: true,
     webPreferences: {
@@ -514,6 +512,8 @@ function createWindow(): void {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
+  mainWindow.maximize(); // Open maximized (full screen with taskbar visible)
+  mainWindow.show();
 
   mainWindow.loadFile(path.join(__dirname, "..", "index.html")); // Changed to point to root index.html
 
