@@ -175,6 +175,11 @@ const inferProviderFromUrl = (url) => {
             return "grok";
         if (/deepseek\.com/i.test(host))
             return "deepseek";
+        // Research providers
+        if (/google\.com/i.test(host) && !/gemini\.google\.com/i.test(host))
+            return "googleai";
+        if (/reddit\.com/i.test(host))
+            return "reddit";
         return host;
     }
     catch {

@@ -340,6 +340,9 @@ function inferProviderFromUrl(url: string): ProviderId {
     if (/claude\.ai/i.test(host)) return "claude";
     if (/grok\.com/i.test(host)) return "grok";
     if (/deepseek\.com/i.test(host)) return "deepseek";
+    // Research providers
+    if (/google\.com/i.test(host) && !/gemini\.google\.com/i.test(host)) return "googleai";
+    if (/reddit\.com/i.test(host)) return "reddit";
     return host;
   } catch {
     return url;
@@ -353,6 +356,9 @@ const PROVIDER_BASE_URL: Record<string, string> = {
   claude: "https://claude.ai/chats/",
   grok: "https://grok.com/",
   deepseek: "https://chat.deepseek.com/",
+  // Research providers
+  googleai: "https://www.google.com/aimode",
+  reddit: "https://www.reddit.com/answers/",
 };
 
 function getCurrentTabsSnapshot(): TabState[] {
@@ -888,13 +894,18 @@ ipcMain.on("paste-prompt", (_: IpcMainEvent, prompt: string) => {
   views.forEach((view: CustomBrowserView) => {
     injectPromptIntoView(view, prompt);
   });
+
+  // Refocus main window so user's prompt input keeps focus
+  mainWindow.webContents.focus();
 });
 
 ipcMain.on("enter-prompt", (_: IpcMainEvent, prompt: string) => {
-  // Added type for prompt
   views.forEach((view: CustomBrowserView) => {
     injectPromptIntoView(view, prompt);
   });
+
+  // Refocus main window so user's prompt input keeps focus
+  mainWindow.webContents.focus();
 });
 
 ipcMain.handle(
@@ -947,6 +958,9 @@ ipcMain.on("send-prompt", async (_evt, prompt: string) => {
   views.forEach((view: CustomBrowserView) => {
     sendPromptInView(view);
   });
+
+  // Refocus main window so user's prompt input keeps focus
+  mainWindow.webContents.focus();
 
   // Delay snapshotting the layout so navigations can settle
   try {
@@ -1385,6 +1399,90 @@ ipcMain.on("close-perplexity", (_, prompt: string) => {
       removeBrowserView(mainWindow, perplexityView, websites, views, { promptAreaHeight, sidebarWidth });
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-perplexity", 800);
+    }
+  }
+});
+
+// ----- Research Providers: Google AI and Reddit -----
+
+ipcMain.on("open-googleai", (_, prompt: string) => {
+  if (prompt === "open googleai now") {
+    console.log("Opening Google AI");
+    const state = getSessionState();
+    const layout = state.activeId ? state.layouts[state.activeId] : null;
+    const tab = layout?.tabs.find(t => t.provider === "googleai");
+    const last = layout?.lastUrlByProvider?.["googleai"];
+    let url = (last && last.length > 0)
+      ? last
+      : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["googleai"]);
+    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+    wireViewUrlPersistence(v);
+    setupViewContextMenu(v);
+    void adjustBrowserViewBounds();
+    scheduleSaveActiveLayoutSnapshot("open-googleai", 800);
+  }
+});
+
+ipcMain.on("close-googleai", (_, prompt: string) => {
+  if (prompt === "close googleai now") {
+    console.log("Closing Google AI");
+    const googleaiView = views.find((view) => view.id.match("google.com"));
+    if (googleaiView) {
+      try {
+        const url = googleaiView.webContents.getURL() || googleaiView.id;
+        const state = getSessionState();
+        if (state.activeId) {
+          const layout = state.layouts[state.activeId] ?? { tabs: [] };
+          const last = { ...(layout.lastUrlByProvider || {}) } as Record<string, string>;
+          last["googleai"] = url;
+          state.layouts[state.activeId] = { tabs: layout.tabs ?? [], lastUrlByProvider: last };
+          setSessionState(state);
+        }
+      } catch { }
+      removeBrowserView(mainWindow, googleaiView, websites, views, { promptAreaHeight, sidebarWidth });
+      void adjustBrowserViewBounds();
+      scheduleSaveActiveLayoutSnapshot("close-googleai", 800);
+    }
+  }
+});
+
+ipcMain.on("open-reddit", (_, prompt: string) => {
+  if (prompt === "open reddit now") {
+    console.log("Opening Reddit");
+    const state = getSessionState();
+    const layout = state.activeId ? state.layouts[state.activeId] : null;
+    const tab = layout?.tabs.find(t => t.provider === "reddit");
+    const last = layout?.lastUrlByProvider?.["reddit"];
+    let url = (last && last.length > 0)
+      ? last
+      : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["reddit"]);
+    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+    wireViewUrlPersistence(v);
+    setupViewContextMenu(v);
+    void adjustBrowserViewBounds();
+    scheduleSaveActiveLayoutSnapshot("open-reddit", 800);
+  }
+});
+
+ipcMain.on("close-reddit", (_, prompt: string) => {
+  if (prompt === "close reddit now") {
+    console.log("Closing Reddit");
+    const redditView = views.find((view) => view.id.match("reddit.com"));
+    if (redditView) {
+      try {
+        const url = redditView.webContents.getURL() || redditView.id;
+        const state = getSessionState();
+        if (state.activeId) {
+          const layout = state.layouts[state.activeId] ?? { tabs: [] };
+          const last = { ...(layout.lastUrlByProvider || {}) } as Record<string, string>;
+          last["reddit"] = url;
+          state.layouts[state.activeId] = { tabs: layout.tabs ?? [], lastUrlByProvider: last };
+          setSessionState(state);
+        }
+      } catch { }
+      removeBrowserView(mainWindow, redditView, websites, views, { promptAreaHeight, sidebarWidth });
+      void adjustBrowserViewBounds();
+      scheduleSaveActiveLayoutSnapshot("close-reddit", 800);
     }
   }
 });

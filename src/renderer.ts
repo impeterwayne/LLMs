@@ -240,6 +240,9 @@ const inferProviderFromUrl = (url: string): string => {
     if (/claude\.ai/i.test(host)) return "claude";
     if (/grok\.com/i.test(host)) return "grok";
     if (/deepseek\.com/i.test(host)) return "deepseek";
+    // Research providers
+    if (/google\.com/i.test(host) && !/gemini\.google\.com/i.test(host)) return "googleai";
+    if (/reddit\.com/i.test(host)) return "reddit";
     return host;
   } catch {
     return url;
