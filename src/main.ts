@@ -602,6 +602,12 @@ app.whenReady().then(() => {
     app.quit();
   });
 
+  // Ctrl+N: create a new session with fresh default layout
+  electronLocalShortcut.register(mainWindow, "Ctrl+N", () => {
+    createNewSession(undefined, true);
+    mainWindow.webContents.send("inject-prompt", "");
+  });
+
   // Debug: Ctrl+Shift+D dumps DOM + screenshot for the focused view only.
   // Click on the broken provider pane first, then press the shortcut.
   // Falls back to all views if none is focused.
