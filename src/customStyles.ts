@@ -169,7 +169,7 @@ function injectStyles(webContents: WebContents) {
         doc
           .querySelectorAll('style[data-llmgod-style]')
           .forEach((node) => node.remove());
-      })();`);
+      })();`).catch(() => { });
     }
     return;
   }
@@ -291,7 +291,7 @@ function injectStyles(webContents: WebContents) {
         console.warn('LLM-God failed to initialise style observer', error);
       }
     }
-  })();`);
+  })();`).catch(() => { });
 }
 
 export function applyCustomStyles(webContents: WebContents): void {
