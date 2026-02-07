@@ -1,11 +1,8 @@
-/* Grok — Inject prompt into textarea */
+/* Grok — Inject prompt into contenteditable (TipTap/ProseMirror) */
 ((prompt) => {
     const el = document.querySelector('__EDITOR_SELECTOR__');
     if (el) {
-        // Hide placeholder span
-        const span = el.previousElementSibling;
-        if (span) span.classList.add('hidden');
-        __setTextareaValue(el, prompt);
+        __execCommandInsert(el, prompt);
         console.log('[Grok] Prompt injected');
     } else {
         console.error('[Grok] Editor not found');

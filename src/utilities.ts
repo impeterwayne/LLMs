@@ -2,6 +2,13 @@ import { BrowserWindow, WebPreferences, WebContentsView } from "electron"; // Ad
 import { applyCustomStyles } from "./customStyles.js";
 import { DEVTOOLS_AUTO_OPEN } from "./config.js";
 import { getProvider } from "./providers/registry.js";
+import { loadScript } from "./providers/shared.js";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __utilFilename = fileURLToPath(import.meta.url);
+const __utilDirname = path.dirname(__utilFilename);
 
 // Re-export SerializedFile so main.ts import doesn't break
 export type { SerializedFile } from "./providers/types.js";
@@ -397,4 +404,94 @@ export async function copyAnswerFromView(view: CustomBrowserView): Promise<strin
     console.error("Failed to copy answer from view:", view.id, error);
     return null;
   }
+}
+
+// ─── Debug Dump ──────────────────────────────────────────────────
+
+/**
+ * Dump DOM structure, interactive elements, and a screenshot for each view.
+ * Saves to `debug-dumps/` in the project root.  Press Ctrl+Shift+D to trigger.
+ *
+ * This lets an AI agent read the files offline to diagnose and fix
+ * broken provider scripts without needing live browser access.
+ */
+export async function dumpViewDebugInfo(
+  views: CustomBrowserView[],
+): Promise<string> {
+  const projectRoot = path.resolve(__utilDirname, "..");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const dumpDir = path.join(projectRoot, "debug-dumps", timestamp);
+  fs.mkdirSync(dumpDir, { recursive: true });
+
+  const dumpScript = loadScript("debug", "dump");
+
+  const results: string[] = [];
+
+  for (const view of views) {
+    const url = view.webContents.getURL() || view.id || "unknown";
+    const provider = getProvider(url);
+    const label = provider?.id || new URL(url).hostname.replace(/\./g, "_");
+    const viewDir = path.join(dumpDir, label);
+    fs.mkdirSync(viewDir, { recursive: true });
+
+    try {
+      // 1) Capture DOM structure via the dump script
+      const jsonStr = await view.webContents.executeJavaScript(dumpScript);
+      const parsed = JSON.parse(jsonStr);
+
+      // Save the full JSON dump
+      fs.writeFileSync(
+        path.join(viewDir, "dump.json"),
+        JSON.stringify(parsed, null, 2),
+        "utf-8",
+      );
+
+      // Save the DOM as a separate readable HTML file
+      if (parsed.dom) {
+        fs.writeFileSync(
+          path.join(viewDir, "dom.html"),
+          parsed.dom,
+          "utf-8",
+        );
+      }
+
+      // Save interactive elements summary
+      if (parsed.interactiveElements) {
+        fs.writeFileSync(
+          path.join(viewDir, "interactive.json"),
+          JSON.stringify(parsed.interactiveElements, null, 2),
+          "utf-8",
+        );
+      }
+
+      results.push(`✓ ${label}: DOM dumped`);
+    } catch (err: any) {
+      const errMsg = `✗ ${label}: DOM dump failed - ${err.message}`;
+      results.push(errMsg);
+      fs.writeFileSync(path.join(viewDir, "error.txt"), errMsg, "utf-8");
+    }
+
+    try {
+      // 2) Capture screenshot
+      const image = await view.webContents.capturePage();
+      const png = image.toPNG();
+      fs.writeFileSync(path.join(viewDir, "screenshot.png"), png);
+      results.push(`✓ ${label}: Screenshot saved`);
+    } catch (err: any) {
+      results.push(`✗ ${label}: Screenshot failed - ${err.message}`);
+    }
+  }
+
+  const summaryPath = path.join(dumpDir, "summary.txt");
+  const summary = [
+    `Debug Dump: ${timestamp}`,
+    `Views: ${views.length}`,
+    `Output: ${dumpDir}`,
+    "",
+    ...results,
+  ].join("\n");
+  fs.writeFileSync(summaryPath, summary, "utf-8");
+
+  console.log(`[LLM-God] Debug dump saved to: ${dumpDir}`);
+  return dumpDir;
 }
