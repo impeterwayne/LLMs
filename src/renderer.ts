@@ -1,5 +1,6 @@
 const ipcRenderer = window.electron.ipcRenderer;
 import { initSessionSidebar } from "./sessionSidebar.js";
+import { initSettings } from "./settings.js";
 
 let promptArea: HTMLElement | null = null;
 
@@ -278,51 +279,100 @@ providerToggles.forEach(toggle => {
 // Initial update
 updateProviderToggles();
 
+// Re-sync the toggle bar whenever workspace changes are applied
+ipcRenderer.on("workspace:views-changed", () => {
+  // Small delay so the main-process view list has settled
+  setTimeout(updateProviderToggles, 150);
+});
+
+// Also refresh when settings are saved (covers opening settings on another window, etc.)
+ipcRenderer.on("settings:updated", () => {
+  setTimeout(updateProviderToggles, 150);
+});
+
+const sendButton = document.getElementById("send-prompt-btn") as HTMLButtonElement | null;
+
+const sendPrompt = (): void => {
+  if (!textArea) return;
+  const value = textArea.value.trim();
+  if (!value) return;
+  ipcRenderer.send("send-prompt", value);
+  textArea.value = "";
+  // Reset opacity hint
+  sendButton?.classList.remove("has-content");
+};
+
 if (textArea) {
   textArea.addEventListener("input", (event: Event) => {
     logToWebPage((event.target as HTMLTextAreaElement).value);
+    // Toggle send button brightness based on content
+    const hasText = (event.target as HTMLTextAreaElement).value.trim().length > 0;
+    sendButton?.classList.toggle("has-content", hasText);
   });
 
   textArea.addEventListener("keydown", (event: KeyboardEvent) => {
-    if (event.ctrlKey) {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        ipcRenderer.send("send-prompt", textArea.value.trim());
-        console.log("Ctrl + Enter pressed");
-        textArea.value = "";
-      }
+    if (event.ctrlKey && event.key === "Enter") {
+      event.preventDefault();
+      sendPrompt();
     }
   });
 }
 
+if (sendButton) {
+  sendButton.addEventListener("click", () => {
+    sendPrompt();
+    textArea?.focus();
+  });
+}
 
+
+
+// Toast notification helper
+const showToast = (message: string, type: "success" | "error" | "info" = "info", durationMs = 2000): void => {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("fade-out");
+    toast.addEventListener("animationend", () => toast.remove(), { once: true });
+  }, durationMs);
+};
 
 // Copy All Answers button handler
 const copyAllAnswersButton = document.getElementById(
   "copy-all-answers",
 ) as HTMLButtonElement | null;
 
+const COPY_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const CHECK_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+
 if (copyAllAnswersButton) {
   copyAllAnswersButton.addEventListener("click", async () => {
-    const originalLabel = copyAllAnswersButton.textContent;
-    copyAllAnswersButton.textContent = "Copying...";
     copyAllAnswersButton.disabled = true;
 
     try {
       const result = await ipcRenderer.invoke("copy-all-answers");
 
       if (result.success) {
-        copyAllAnswersButton.textContent = `Copied ${result.count} answer(s)!`;
+        copyAllAnswersButton.innerHTML = CHECK_ICON_SVG;
+        copyAllAnswersButton.classList.add("copied");
+        showToast(`Copied ${result.count} answer(s)!`, "success");
       } else {
-        copyAllAnswersButton.textContent = result.message || "No Answers Found";
+        showToast(result.message || "No answers found", "error");
       }
     } catch (error) {
       console.error("Failed to copy all answers", error);
-      copyAllAnswersButton.textContent = "Copy Failed";
+      showToast("Copy failed", "error");
     }
 
     setTimeout(() => {
-      copyAllAnswersButton.textContent = originalLabel ?? "Copy All Answers";
+      copyAllAnswersButton.innerHTML = COPY_ICON_SVG;
+      copyAllAnswersButton.classList.remove("copied");
       copyAllAnswersButton.disabled = false;
     }, 1500);
   });
@@ -346,12 +396,128 @@ ipcRenderer.on("inject-prompt", (event, selectedPrompt: string) => {
 if (document.readyState === "loading") {
   window.addEventListener("DOMContentLoaded", () => {
     try { initSessionSidebar(); } catch (err) { console.error(err); }
+    try { initSettings(); } catch (err) { console.error(err); }
   }, { once: true });
 } else {
   try { initSessionSidebar(); } catch (err) { console.error(err); }
+  try { initSettings(); } catch (err) { console.error(err); }
 }
 
 // ----- View Headers Implementation -----
+
+let currentLayoutMode: string = 'row';
+let stackTabBar: HTMLElement | null = null;
+let lastStackActiveIndex = 0;
+
+function inferProviderNameFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname;
+    if (/chatgpt\.com|chat\.openai\.com/i.test(host)) return "ChatGPT";
+    if (/gemini\.google\.com/i.test(host)) return "Gemini";
+    if (/perplexity\.ai/i.test(host)) return "Perplexity";
+    if (/claude\.ai/i.test(host)) return "Claude";
+    if (/grok\.com/i.test(host)) return "Grok";
+    if (/deepseek\.com/i.test(host)) return "DeepSeek";
+    if (/google\.com/i.test(host) && !/gemini\.google\.com/i.test(host)) return "Google AI";
+    if (/reddit\.com/i.test(host)) return "Reddit";
+    return host;
+  } catch {
+    return url.slice(0, 20);
+  }
+}
+
+function buildStackTabs(layouts: ViewLayout[], activeIndex: number) {
+  if (!stackTabBar) {
+    stackTabBar = document.getElementById('stack-tab-bar');
+    if (!stackTabBar) return;
+  }
+
+  // Track the active index so we can reuse it across rebuilds
+  if (activeIndex >= 0) {
+    lastStackActiveIndex = activeIndex;
+  }
+  const resolvedActive = activeIndex >= 0 ? activeIndex : lastStackActiveIndex;
+
+  // Position tab bar using sidebar offset from first header bounds
+  if (layouts.length > 0) {
+    const leftOffset = layouts[0].headerBounds.x;
+    stackTabBar.style.left = `${leftOffset}px`;
+  }
+
+  // Build a signature of the current tabs to detect if a full rebuild is needed
+  const newSig = layouts.map(l => inferProviderNameFromUrl(l.url || l.id)).join('|');
+  const oldSig = stackTabBar.dataset.sig || '';
+
+  if (newSig === oldSig) {
+    // Same providers — just update the active highlight, no DOM rebuild
+    updateStackActiveTab(resolvedActive);
+    return;
+  }
+
+  // Full rebuild needed (providers changed)
+  stackTabBar.dataset.sig = newSig;
+  stackTabBar.innerHTML = '';
+
+  // Prev button
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'stack-tab-nav';
+  prevBtn.title = 'Previous (Ctrl+Shift+Tab)';
+  prevBtn.innerHTML = '&#8249;'; // ‹
+  prevBtn.addEventListener('click', () => ipcRenderer.send('stack:prev'));
+  stackTabBar.appendChild(prevBtn);
+
+  // Tab buttons
+  layouts.forEach((layout, index) => {
+    const tab = document.createElement('button');
+    tab.className = 'stack-tab' + (index === resolvedActive ? ' active' : '');
+    tab.dataset.index = String(index);
+
+    const dot = document.createElement('span');
+    dot.className = 'stack-tab-dot';
+
+    const label = document.createElement('span');
+    label.textContent = inferProviderNameFromUrl(layout.url || layout.id);
+
+    tab.appendChild(dot);
+    tab.appendChild(label);
+
+    tab.addEventListener('click', () => {
+      ipcRenderer.send('stack:go-to', index);
+    });
+
+    stackTabBar!.appendChild(tab);
+  });
+
+  // Next button
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'stack-tab-nav';
+  nextBtn.title = 'Next (Ctrl+Tab)';
+  nextBtn.innerHTML = '&#8250;'; // ›
+  nextBtn.addEventListener('click', () => ipcRenderer.send('stack:next'));
+  stackTabBar.appendChild(nextBtn);
+}
+
+function updateStackActiveTab(activeIndex: number) {
+  if (!stackTabBar) return;
+  stackTabBar.querySelectorAll<HTMLButtonElement>('.stack-tab').forEach((tab) => {
+    const idx = parseInt(tab.dataset.index ?? '-1', 10);
+    tab.classList.toggle('active', idx === activeIndex);
+  });
+}
+
+function setStackMode(enabled: boolean) {
+  if (!stackTabBar) {
+    stackTabBar = document.getElementById('stack-tab-bar');
+  }
+  if (stackTabBar) {
+    stackTabBar.classList.toggle('visible', enabled);
+  }
+  // When in stack mode, hide the normal view headers
+  if (viewHeadersContainer) {
+    viewHeadersContainer.style.display = enabled ? 'none' : '';
+  }
+}
 
 function updateViewHeaders(layouts: ViewLayout[]) {
   if (!viewHeadersContainer) {
@@ -360,6 +526,12 @@ function updateViewHeaders(layouts: ViewLayout[]) {
   }
 
   currentViewLayouts = layouts;
+
+  // In stack mode, we don't render normal headers — the tab bar replaces them
+  if (currentLayoutMode === 'stack') {
+    viewHeadersContainer.innerHTML = '';
+    return;
+  }
 
   // Clear existing (simple approach; optimization possible if thrashing)
   viewHeadersContainer.innerHTML = '';
@@ -408,9 +580,41 @@ function updateViewHeaders(layouts: ViewLayout[]) {
 // Listen for layout updates from main process
 ipcRenderer.on('view-layout-updated', (_event, layouts: ViewLayout[]) => {
   updateViewHeaders(layouts);
+
+  // Rebuild stack tabs whenever views change (if in stack mode)
+  if (currentLayoutMode === 'stack') {
+    // Pass -1; buildStackTabs will reuse lastStackActiveIndex internally
+    buildStackTabs(layouts, -1);
+  }
+});
+
+// Listen for layout mode changes
+ipcRenderer.on('layout:mode-changed', (_event, mode: string) => {
+  currentLayoutMode = mode;
+  setStackMode(mode === 'stack');
+});
+
+// Listen for stack active tab changes
+ipcRenderer.on('stack:active-changed', (_event, activeIndex: number) => {
+  lastStackActiveIndex = activeIndex;
+  updateStackActiveTab(activeIndex);
+});
+
+// Ctrl+Tab / Ctrl+Shift+Tab for stack cycling
+window.addEventListener('keydown', (e) => {
+  if (currentLayoutMode !== 'stack') return;
+  if (e.ctrlKey && e.key === 'Tab') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      ipcRenderer.send('stack:prev');
+    } else {
+      ipcRenderer.send('stack:next');
+    }
+  }
 });
 
 // Ensure container reference on load
 window.addEventListener('DOMContentLoaded', () => {
   viewHeadersContainer = document.getElementById('view-headers-container');
+  stackTabBar = document.getElementById('stack-tab-bar');
 });
