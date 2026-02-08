@@ -1,6 +1,6 @@
 {
-  "name": "LLMs",
-  "version": "1.0.0",
+  "name": "llm-space",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "main": "dist/main.js",

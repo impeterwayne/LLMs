@@ -30,7 +30,7 @@ let currentSettings: WorkspaceSettings = {
     workspaceName: "",
     defaultProviders: ["chatgpt", "gemini", "perplexity"],
     layout: "row",
-    showAddressBar: true,
+    showAddressBar: false,
     showProviderBar: true,
 };
 

@@ -172,7 +172,7 @@ async function adjustBrowserViewBounds(): Promise<void> {
 
   // Grid / row layout
   const { cols, rows } = getGridDimensions(views.length, layoutMode);
-  const gap = 1; // 1px divider between views (window background shows through)
+  const gap = 1; // 1px visual divider between views
   const totalGapX = (cols - 1) * gap;
   const totalGapY = (rows - 1) * gap;
   const cellWidth = Math.floor((availableWidth - totalGapX) / cols);
@@ -604,9 +604,12 @@ function restoreLastActiveSessionAtStartup(): void {
     browserViewsInitialized = true;
     restoreLayout(layout.tabs, layout.lastUrlByProvider);
 
-    // Inform renderer of active selection
+    // Inform renderer of active selection and visibility settings
     mainWindow.webContents.once("did-finish-load", () => {
       mainWindow.webContents.send("sessions:active-changed", { id });
+      const settings = getAppSettings();
+      mainWindow.webContents.send("ui:toggle-address-bar", settings.showAddressBar !== false);
+      mainWindow.webContents.send("ui:toggle-provider-bar", settings.showProviderBar !== false);
     });
   } catch (err) {
     console.warn("Failed to restore last active session on startup", err);
@@ -1291,7 +1294,7 @@ function getAppSettings(): WorkspaceSettings {
     workspaceName: "",
     defaultProviders: ["chatgpt", "gemini", "perplexity"],
     layout: "row",
-    showAddressBar: true,
+    showAddressBar: false,
     showProviderBar: true,
     ...saved,
   };

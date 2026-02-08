@@ -536,6 +536,13 @@ function updateViewHeaders(layouts: ViewLayout[]) {
   // Clear existing (simple approach; optimization possible if thrashing)
   viewHeadersContainer.innerHTML = '';
 
+  // If header height is 0 (address bar hidden), don't create any header elements
+  if (layouts.length > 0 && layouts[0].headerBounds.height === 0) {
+    viewHeadersContainer.style.display = 'none';
+    return;
+  }
+  viewHeadersContainer.style.display = '';
+
   layouts.forEach(layout => {
     const header = document.createElement('div');
     header.className = 'view-header';
