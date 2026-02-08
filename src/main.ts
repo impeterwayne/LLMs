@@ -29,13 +29,14 @@ import {
   dumpViewDebugInfo,
 } from "./utilities.js"; // Adjusted path
 import type { SerializedFile } from "./utilities.js";
+import { getProvider } from "./providers/registry.js";
 import { applyCustomStyles } from "./customStyles.js";
 import { createRequire } from "node:module"; // Import createRequire
 import { fileURLToPath } from "node:url"; // Import fileURLToPath
 import Store from "electron-store"; // Import electron-store
 
 const require = createRequire(import.meta.url);
-const store = new Store(); // Create an instance of electron-store (prompts)
+
 const sessionStore = new Store({ name: "sessions" }); // Separate store for sessions
 
 interface CustomBrowserView extends WebContentsView {
@@ -47,12 +48,14 @@ if (require("electron-squirrel-startup")) app.quit();
 remote.initialize();
 
 let mainWindow: BrowserWindow;
-let formWindow: BrowserWindow | null; // Allow formWindow to be null
+
 let sessionsWindow: BrowserWindow | null = null;
 let linkSessionsToMain = true; // keep sessions window docked to main
-let pendingRowSelectedKey: string | null = null; // Store the key of the selected row for later use
+
 
 const views: CustomBrowserView[] = [];
+/** Cache of detached WebContentsViews keyed by provider id, to avoid recreating them. */
+const viewCache = new Map<string, CustomBrowserView>();
 let promptAreaHeight = 0; // reserved bottom space for chat pane
 let reservedRight = 0; // reserved right space when chat pane is docked right (future)
 let sidebarWidth = 280; // default reserve for left sidebar; renderer will update
@@ -69,7 +72,16 @@ function scheduleSaveActiveLayoutSnapshot(reason?: string, delayMs = 800): void 
   } catch { }
 }
 
-const HEADER_HEIGHT = 44; // Height for URL bar headers
+const HEADER_HEIGHT_DEFAULT = 44; // Height for URL bar headers
+
+function getHeaderHeight(): number {
+  try {
+    const settings = getAppSettings();
+    return settings.showAddressBar === false ? 0 : HEADER_HEIGHT_DEFAULT;
+  } catch {
+    return HEADER_HEIGHT_DEFAULT;
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -82,6 +94,44 @@ const websites: string[] = [
   "https://www.perplexity.ai/",
 ];
 
+type LayoutMode = 'row' | 'grid-auto' | 'grid-2col' | 'grid-2row' | 'stack';
+
+/** Calculate grid dimensions for current layout mode */
+function getGridDimensions(viewCount: number, layout: LayoutMode): { cols: number; rows: number } {
+  if (viewCount <= 0) return { cols: 1, rows: 1 };
+
+  switch (layout) {
+    case 'row':
+      return { cols: viewCount, rows: 1 };
+    case 'grid-2col':
+      return { cols: Math.min(2, viewCount), rows: Math.ceil(viewCount / 2) };
+    case 'grid-2row':
+      return { cols: Math.ceil(viewCount / 2), rows: Math.min(2, viewCount) };
+    case 'stack':
+      return { cols: 1, rows: 1 }; // only one view visible at a time
+    case 'grid-auto':
+    default: {
+      // Smart auto-grid: pick best layout based on view count
+      if (viewCount <= 3) return { cols: viewCount, rows: 1 };
+      const cols = Math.ceil(Math.sqrt(viewCount));
+      const rows = Math.ceil(viewCount / cols);
+      return { cols, rows };
+    }
+  }
+}
+
+/** Index of the view currently focused in stack mode (0-indexed). */
+let stackActiveIndex = 0;
+
+function getCurrentLayoutMode(): LayoutMode {
+  try {
+    const settings = getAppSettings();
+    return settings.layout || 'row';
+  } catch {
+    return 'row';
+  }
+}
+
 async function adjustBrowserViewBounds(): Promise<void> {
   if (!mainWindow) {
     return;
@@ -91,17 +141,54 @@ async function adjustBrowserViewBounds(): Promise<void> {
   const availableHeight = Math.max(height - promptAreaHeight, 0);
   const offset = Math.ceil(Math.max(0, sidebarWidth));
   const availableWidth = Math.max(width - offset - Math.max(0, Math.ceil(reservedRight)), 0);
-  const viewWidth = websites.length > 0 ? Math.floor(availableWidth / websites.length) : availableWidth;
+  const layoutMode = getCurrentLayoutMode();
+
+  if (views.length === 0) {
+    sendViewLayout();
+    return;
+  }
+
+  if (layoutMode === 'stack') {
+    // Stack mode: show only one view at full size
+    // Always reserve space for the stack tab bar (44px), even if address bar is hidden
+    const stackTabHeight = HEADER_HEIGHT_DEFAULT;
+    stackActiveIndex = Math.min(Math.max(0, stackActiveIndex), views.length - 1);
+    views.forEach((view, index) => {
+      if (index === stackActiveIndex) {
+        view.setBounds({
+          x: offset,
+          y: stackTabHeight,
+          width: availableWidth,
+          height: Math.max(availableHeight - stackTabHeight, 0),
+        });
+      } else {
+        // Hide off-screen
+        view.setBounds({ x: -9999, y: -9999, width: 0, height: 0 });
+      }
+    });
+    sendViewLayout();
+    return;
+  }
+
+  // Grid / row layout
+  const { cols, rows } = getGridDimensions(views.length, layoutMode);
+  const gap = 1; // 1px divider between views (window background shows through)
+  const totalGapX = (cols - 1) * gap;
+  const totalGapY = (rows - 1) * gap;
+  const cellWidth = Math.floor((availableWidth - totalGapX) / cols);
+  const cellHeight = Math.floor((availableHeight - totalGapY) / rows);
 
   views.forEach((view, index) => {
-    const x = offset + index * viewWidth;
-    const y = HEADER_HEIGHT;
-    const h = Math.max(availableHeight - HEADER_HEIGHT, 0);
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x = offset + col * (cellWidth + gap);
+    const y = row * (cellHeight + gap) + getHeaderHeight();
+    const h = Math.max(cellHeight - getHeaderHeight(), 0);
 
     view.setBounds({
-      x: x,
-      y: y,
-      width: viewWidth,
+      x,
+      y,
+      width: cellWidth,
       height: h,
     });
   });
@@ -111,21 +198,44 @@ async function adjustBrowserViewBounds(): Promise<void> {
 
 function sendViewLayout() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const layout = views.map(v => {
+  const layoutMode = getCurrentLayoutMode();
+  const { cols, rows } = getGridDimensions(views.length, layoutMode);
+  const { width, height } = mainWindow.getContentBounds();
+  const availableHeight = Math.max(height - promptAreaHeight, 0);
+  const offsetX = Math.ceil(Math.max(0, sidebarWidth));
+  const availableWidth = Math.max(width - offsetX - Math.max(0, Math.ceil(reservedRight)), 0);
+  const gap = 1;
+  const totalGapX = cols > 0 ? (cols - 1) * gap : 0;
+  const totalGapY = rows > 0 ? (rows - 1) * gap : 0;
+  const cellWidth = cols > 0 ? Math.floor((availableWidth - totalGapX) / cols) : availableWidth;
+  const cellHeight = rows > 0 ? Math.floor((availableHeight - totalGapY) / rows) : availableHeight;
+
+  const headerH = layoutMode === 'stack' ? HEADER_HEIGHT_DEFAULT : getHeaderHeight();
+
+  const layout = views.map((v, index) => {
     const b = v.getBounds();
+    const col = index % cols;
+    const row = Math.floor(index / cols);
     return {
       id: v.id,
       url: v.webContents.getURL(),
       bounds: b,
       headerBounds: {
-        x: b.x,
-        y: 0,
-        width: b.width,
-        height: HEADER_HEIGHT
-      }
+        x: offsetX + col * (cellWidth + gap),
+        y: row * (cellHeight + gap),
+        width: cellWidth,
+        height: headerH,
+      },
     };
   });
+
   mainWindow.webContents.send('view-layout-updated', layout);
+  mainWindow.webContents.send('layout:mode-changed', layoutMode);
+
+  // In stack mode, always notify renderer of the active view index
+  if (layoutMode === 'stack') {
+    mainWindow.webContents.send('stack:active-changed', stackActiveIndex);
+  }
 }
 
 // Setup context menu for browser views with copy image functionality
@@ -227,9 +337,9 @@ async function initializeBrowserViews(): Promise<void> {
     mainWindow.contentView.addChildView(view);
     view.setBounds({
       x: offset + index * viewWidth,
-      y: HEADER_HEIGHT,
+      y: getHeaderHeight(),
       width: viewWidth,
-      height: Math.max(availableHeight - HEADER_HEIGHT, 0),
+      height: Math.max(availableHeight - getHeaderHeight(), 0),
     });
     view.webContents.setZoomFactor(1);
     applyCustomStyles(view.webContents);
@@ -437,16 +547,22 @@ function wireViewUrlPersistence(view: WebContentsView & { id?: string }): void {
 }
 
 function restoreLayout(tabs: TabState[], lastUrlByProvider?: Record<string, string>): void {
-  // Close all existing views
+  // Cache all existing views (keyed by provider) instead of destroying them
   const toRemove = [...views];
   toRemove.forEach((v) => {
-    removeBrowserView(mainWindow, v, websites, views, { promptAreaHeight, sidebarWidth });
+    const url = v.webContents.isDestroyed() ? (v.id || '') : (v.webContents.getURL() || v.id || '');
+    const provider = inferProviderFromUrl(url);
+    if (provider) {
+      cacheProviderView(provider, v);
+    } else {
+      removeBrowserView(mainWindow, v, websites, views, { promptAreaHeight, sidebarWidth });
+    }
   });
 
   // Clear websites list
   websites.splice(0, websites.length);
 
-  // Recreate views based on tabs; prefer last-url snapshot if available
+  // Recreate views based on tabs; prefer cached views when available
   tabs.forEach((tab) => {
     const last = lastUrlByProvider?.[tab.provider];
     const url = (last && last.length > 0)
@@ -454,9 +570,11 @@ function restoreLayout(tabs: TabState[], lastUrlByProvider?: Record<string, stri
       : ((tab.url && tab.url.length > 0)
         ? tab.url
         : (PROVIDER_BASE_URL[tab.provider] || tab.url));
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView(tab.provider, url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
   });
 
   void adjustBrowserViewBounds();
@@ -497,9 +615,7 @@ function restoreLastActiveSessionAtStartup(): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 2000,
-    height: 1100,
-    center: true,
+    show: false, // Start hidden so we can maximize before showing
     backgroundColor: "#000000",
     autoHideMenuBar: true,
     webPreferences: {
@@ -513,6 +629,8 @@ function createWindow(): void {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
+  mainWindow.maximize(); // Open maximized (full screen with taskbar visible)
+  mainWindow.show();
 
   mainWindow.loadFile(path.join(__dirname, "..", "index.html")); // Changed to point to root index.html
 
@@ -570,21 +688,7 @@ function createWindow(): void {
   });
 }
 
-function createFormWindow() {
-  formWindow = new BrowserWindow({
-    width: 900,
-    height: 900,
-    parent: mainWindow,
-    modal: true,
-    webPreferences: {
-      preload: path.join(__dirname, "..", "dist", "form_preload.js"), // Use the same preload script
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
 
-  formWindow.loadFile(path.join(__dirname, "..", "src", "form.html"));
-}
 
 function updateZoomFactor(): void {
   views.forEach((view) => {
@@ -599,6 +703,12 @@ app.whenReady().then(() => {
 
   electronLocalShortcut.register(mainWindow, "Ctrl+W", () => {
     app.quit();
+  });
+
+  // Ctrl+N: create a new session with fresh default layout
+  electronLocalShortcut.register(mainWindow, "Ctrl+N", () => {
+    createNewSession(undefined, true);
+    mainWindow.webContents.send("inject-prompt", "");
   });
 
   // Debug: Ctrl+Shift+D dumps DOM + screenshot for the focused view only.
@@ -739,6 +849,28 @@ function layoutWindows() {
   }
 }
 
+// Toggle browser view visibility (hide when DOM overlays need to be on top)
+ipcMain.on("toggle-views-visibility", (_evt, visible: boolean) => {
+  views.forEach((view) => {
+    try {
+      if (visible) {
+        // Re-add to window if not already there
+        if (!mainWindow.contentView.children.includes(view)) {
+          mainWindow.contentView.addChildView(view);
+        }
+      } else {
+        // Remove from window to let DOM overlay show
+        mainWindow.contentView.removeChildView(view);
+      }
+    } catch (err) {
+      console.warn("Failed to toggle view visibility", err);
+    }
+  });
+  if (visible) {
+    void adjustBrowserViewBounds();
+  }
+});
+
 // Sidebar size updates from renderer
 ipcMain.on("sidebar-size", (_, width: number) => {
   const normalized = Math.max(0, Math.round(width || 0));
@@ -794,12 +926,7 @@ ipcMain.on("ui-chrome-size", (_evt, payload: { bottom?: number; right?: number }
 });
 
 
-ipcMain.on("close-form-window", () => {
-  if (formWindow) {
-    formWindow.close();
-    formWindow = null; // Clear the reference
-  }
-});
+
 
 ipcMain.handle("get-current-urls", () => {
   return views.map((view) => {
@@ -825,24 +952,24 @@ ipcMain.on("copy-to-clipboard", (_, text: string) => {
   clipboard.writeText(text ?? "");
 });
 
-// Copy all answers from ChatGPT, Gemini, and Perplexity
+// Copy all answers from all views that support copy
 ipcMain.handle("copy-all-answers", async () => {
   const tempDir = app.getPath("temp");
   const tempFiles: { provider: string; filePath: string }[] = [];
 
-  // Filter to only ChatGPT, Gemini, and Perplexity views
+  // Filter to views whose provider supports buildCopyScript
   const targetViews = views.filter((v) => {
-    const id = v.id?.toLowerCase() || "";
-    return id.includes("chatgpt") || id.includes("gemini") || id.includes("perplexity");
+    const p = getProvider(v.id);
+    return p?.buildCopyScript != null;
   });
 
   for (const view of targetViews) {
     try {
-      // Determine provider name
-      let provider = "Unknown";
-      if (view.id?.match("chatgpt")) provider = "ChatGPT";
-      else if (view.id?.match("gemini")) provider = "Gemini";
-      else if (view.id?.match("perplexity")) provider = "Perplexity";
+      // Determine provider name from registry
+      const p = getProvider(view.id);
+      const provider = p?.id
+        ? p.id.charAt(0).toUpperCase() + p.id.slice(1)
+        : "Unknown";
 
       // Clear clipboard before copying
       clipboard.writeText("");
@@ -902,28 +1029,9 @@ ipcMain.handle("copy-all-answers", async () => {
   return { success: true, count: results.length };
 });
 
-ipcMain.on("save-prompt", (event, promptValue: string) => {
-  const timestamp = new Date().getTime().toString();
-  store.set(timestamp, promptValue);
 
-  console.log("Prompt saved with key:", timestamp);
-});
 
-// Add handler to get stored prompts
-ipcMain.handle("get-prompts", () => {
-  return store.store; // Returns all stored data
-});
 
-ipcMain.on("paste-prompt", (_: IpcMainEvent, prompt: string) => {
-  mainWindow.webContents.send("inject-prompt", prompt);
-
-  views.forEach((view: CustomBrowserView) => {
-    injectPromptIntoView(view, prompt);
-  });
-
-  // Refocus main window so user's prompt input keeps focus
-  mainWindow.webContents.focus();
-});
 
 ipcMain.on("enter-prompt", (_: IpcMainEvent, prompt: string) => {
   views.forEach((view: CustomBrowserView) => {
@@ -1164,23 +1272,152 @@ ipcMain.handle("sessions:delete", (_evt, { id }: { id: SessionId }) => {
   mainWindow.webContents.send("sessions:changed", { updatedIds: [id] });
 });
 
-ipcMain.on("delete-prompt-by-value", (event, value: string) => {
-  value = value.normalize("NFKC");
-  // Get all key-value pairs from the store
-  const allEntries = store.store; // `store.store` gives the entire object
 
-  // Find the key that matches the given value
-  const matchingKey = Object.keys(allEntries).find(
-    (key) => allEntries[key] === value,
-  );
 
-  if (matchingKey) {
-    store.delete(matchingKey);
-    console.log(`Deleted entry with key: ${matchingKey} and value: ${value}`);
-  } else {
-    console.error(`No matching entry found for value: ${value}`);
-  }
+// ----- Settings Store -----
+const settingsStore = new Store({ name: "settings" });
+
+interface WorkspaceSettings {
+  workspaceName: string;
+  defaultProviders: string[];
+  layout: LayoutMode;
+  showAddressBar: boolean;
+  showProviderBar: boolean;
+}
+
+function getAppSettings(): WorkspaceSettings {
+  const saved = settingsStore.get("workspace") as WorkspaceSettings | undefined;
+  return {
+    workspaceName: "",
+    defaultProviders: ["chatgpt", "gemini", "perplexity"],
+    layout: "row",
+    showAddressBar: true,
+    showProviderBar: true,
+    ...saved,
+  };
+}
+
+ipcMain.handle("settings:get", () => {
+  return getAppSettings();
 });
+
+ipcMain.handle("settings:save", (_evt, settings: WorkspaceSettings) => {
+  settingsStore.set("workspace", settings);
+  mainWindow?.webContents.send("settings:updated", settings);
+});
+
+ipcMain.on("settings:apply-workspace", (_evt, settings: WorkspaceSettings) => {
+  const desired = Array.isArray(settings.defaultProviders) ? settings.defaultProviders : [];
+
+  // Determine which providers are currently open
+  const currentProviders = views.map(v => inferProviderFromUrl(v.webContents.getURL() || v.id));
+
+  // Close providers not in the desired list
+  const toClose = views.filter(v => {
+    const p = inferProviderFromUrl(v.webContents.getURL() || v.id);
+    return !desired.includes(p);
+  });
+  for (const v of toClose) {
+    try {
+      const url = v.webContents.getURL() || v.id;
+      const state = getSessionState();
+      if (state.activeId) {
+        const layout = state.layouts[state.activeId] ?? { tabs: [] };
+        const last = { ...(layout.lastUrlByProvider || {}) } as Record<string, string>;
+        last[inferProviderFromUrl(url)] = url;
+        state.layouts[state.activeId] = { tabs: layout.tabs ?? [], lastUrlByProvider: last };
+        setSessionState(state);
+      }
+    } catch { }
+    removeBrowserView(mainWindow, v, websites, views, { promptAreaHeight, sidebarWidth });
+  }
+
+  // Open providers that are desired but not currently open
+  for (const providerId of desired) {
+    if (currentProviders.includes(providerId) && !toClose.find(v => inferProviderFromUrl(v.webContents.getURL() || v.id) === providerId)) {
+      continue; // already open and not closed
+    }
+    const state = getSessionState();
+    const layout = state.activeId ? state.layouts[state.activeId] : null;
+    const last = layout?.lastUrlByProvider?.[providerId];
+    const tab = layout?.tabs.find(t => t.provider === providerId);
+    const url = (last && last.length > 0)
+      ? last
+      : ((tab?.url && tab.url.length > 0) ? tab.url : (PROVIDER_BASE_URL[providerId] || `https://${providerId}.com/`));
+    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+    wireViewUrlPersistence(v);
+    setupViewContextMenu(v);
+  }
+
+  void adjustBrowserViewBounds();
+  scheduleSaveActiveLayoutSnapshot("apply-workspace", 500);
+
+  // Notify renderer so the provider toggle bar updates immediately
+  mainWindow?.webContents.send("workspace:views-changed");
+
+  // Send visibility toggles
+  mainWindow?.webContents.send("ui:toggle-address-bar", settings.showAddressBar !== false);
+  mainWindow?.webContents.send("ui:toggle-provider-bar", settings.showProviderBar !== false);
+});
+
+// ----- Stack Mode Navigation -----
+ipcMain.on("stack:next", () => {
+  if (getCurrentLayoutMode() !== 'stack' || views.length === 0) return;
+  stackActiveIndex = (stackActiveIndex + 1) % views.length;
+  void adjustBrowserViewBounds();
+  mainWindow?.webContents.send("stack:active-changed", stackActiveIndex);
+});
+
+ipcMain.on("stack:prev", () => {
+  if (getCurrentLayoutMode() !== 'stack' || views.length === 0) return;
+  stackActiveIndex = (stackActiveIndex - 1 + views.length) % views.length;
+  void adjustBrowserViewBounds();
+  mainWindow?.webContents.send("stack:active-changed", stackActiveIndex);
+});
+
+ipcMain.on("stack:go-to", (_evt, index: number) => {
+  if (getCurrentLayoutMode() !== 'stack' || views.length === 0) return;
+  stackActiveIndex = Math.min(Math.max(0, index), views.length - 1);
+  void adjustBrowserViewBounds();
+  mainWindow?.webContents.send("stack:active-changed", stackActiveIndex);
+});
+
+/**
+ * Cache a view instead of destroying it. Detaches from the window but keeps it alive.
+ */
+function cacheProviderView(provider: string, view: CustomBrowserView): void {
+  // Detach from window but do NOT destroy
+  mainWindow.contentView.removeChildView(view);
+  const viewIndex = views.indexOf(view);
+  if (viewIndex !== -1) views.splice(viewIndex, 1);
+  const urlIndex = websites.findIndex(u => u === view.id);
+  if (urlIndex !== -1) websites.splice(urlIndex, 1);
+  viewCache.set(provider, view);
+}
+
+/**
+ * Restore a cached view for a provider, navigating it to the given URL.
+ * Returns the view if cache hit, or null if no cached view exists.
+ */
+function restoreCachedView(provider: string, url: string): CustomBrowserView | null {
+  const cached = viewCache.get(provider);
+  if (!cached || cached.webContents.isDestroyed()) {
+    viewCache.delete(provider);
+    return null;
+  }
+  viewCache.delete(provider);
+  // Re-attach to window
+  cached.id = url;
+  mainWindow.contentView.addChildView(cached);
+  websites.push(url);
+  views.push(cached);
+  // Navigate to the URL (may be same page if user hasn't changed it)
+  const currentUrl = cached.webContents.getURL();
+  if (currentUrl !== url) {
+    cached.webContents.loadURL(url);
+  }
+  return cached;
+}
 
 ipcMain.on("open-claude", (_, prompt: string) => {
   if (prompt === "open claude now") {
@@ -1192,9 +1429,11 @@ ipcMain.on("open-claude", (_, prompt: string) => {
     let url = (last && last.length > 0)
       ? last
       : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["claude"]);
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView("claude", url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
     void adjustBrowserViewBounds();
     scheduleSaveActiveLayoutSnapshot("open-claude", 800);
   }
@@ -1217,7 +1456,7 @@ ipcMain.on("close-claude", (_, prompt: string) => {
           setSessionState(state);
         }
       } catch { }
-      removeBrowserView(mainWindow, claudeView, websites, views, { promptAreaHeight, sidebarWidth });
+      cacheProviderView("claude", claudeView);
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-claude", 800);
     }
@@ -1234,9 +1473,11 @@ ipcMain.on("open-grok", (_, prompt: string) => {
     let url = (last && last.length > 0)
       ? last
       : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["grok"]);
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView("grok", url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
     void adjustBrowserViewBounds();
     scheduleSaveActiveLayoutSnapshot("open-grok", 800);
   }
@@ -1258,7 +1499,7 @@ ipcMain.on("close-grok", (_, prompt: string) => {
           setSessionState(state);
         }
       } catch { }
-      removeBrowserView(mainWindow, grokView, websites, views, { promptAreaHeight, sidebarWidth });
+      cacheProviderView("grok", grokView);
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-grok", 800);
     }
@@ -1275,9 +1516,11 @@ ipcMain.on("open-deepseek", (_, prompt: string) => {
     let url = (last && last.length > 0)
       ? last
       : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["deepseek"]);
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView("deepseek", url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
     void adjustBrowserViewBounds();
     scheduleSaveActiveLayoutSnapshot("open-deepseek", 800);
   }
@@ -1299,7 +1542,7 @@ ipcMain.on("close-deepseek", (_, prompt: string) => {
           setSessionState(state);
         }
       } catch { }
-      removeBrowserView(mainWindow, deepseekView, websites, views, { promptAreaHeight, sidebarWidth });
+      cacheProviderView("deepseek", deepseekView);
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-deepseek", 800);
     }
@@ -1316,9 +1559,11 @@ ipcMain.on("open-chatgpt", (_, prompt: string) => {
     let url = (last && last.length > 0)
       ? last
       : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["chatgpt"]);
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView("chatgpt", url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
     void adjustBrowserViewBounds();
     scheduleSaveActiveLayoutSnapshot("open-chatgpt", 800);
   }
@@ -1340,7 +1585,7 @@ ipcMain.on("close-chatgpt", (_, prompt: string) => {
           setSessionState(state);
         }
       } catch { }
-      removeBrowserView(mainWindow, chatgptView, websites, views, { promptAreaHeight, sidebarWidth });
+      cacheProviderView("chatgpt", chatgptView);
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-chatgpt", 800);
     }
@@ -1357,9 +1602,11 @@ ipcMain.on("open-gemini", (_, prompt: string) => {
     let url = (last && last.length > 0)
       ? last
       : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["gemini"]);
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView("gemini", url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
     void adjustBrowserViewBounds();
     scheduleSaveActiveLayoutSnapshot("open-gemini", 800);
   }
@@ -1381,7 +1628,7 @@ ipcMain.on("close-gemini", (_, prompt: string) => {
           setSessionState(state);
         }
       } catch { }
-      removeBrowserView(mainWindow, geminiView, websites, views, { promptAreaHeight, sidebarWidth });
+      cacheProviderView("gemini", geminiView);
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-gemini", 800);
     }
@@ -1398,9 +1645,11 @@ ipcMain.on("open-perplexity", (_, prompt: string) => {
     let url = (last && last.length > 0)
       ? last
       : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["perplexity"]);
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView("perplexity", url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
     void adjustBrowserViewBounds();
     scheduleSaveActiveLayoutSnapshot("open-perplexity", 800);
   }
@@ -1422,7 +1671,7 @@ ipcMain.on("close-perplexity", (_, prompt: string) => {
           setSessionState(state);
         }
       } catch { }
-      removeBrowserView(mainWindow, perplexityView, websites, views, { promptAreaHeight, sidebarWidth });
+      cacheProviderView("perplexity", perplexityView);
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-perplexity", 800);
     }
@@ -1441,9 +1690,11 @@ ipcMain.on("open-googleai", (_, prompt: string) => {
     let url = (last && last.length > 0)
       ? last
       : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["googleai"]);
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView("googleai", url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
     void adjustBrowserViewBounds();
     scheduleSaveActiveLayoutSnapshot("open-googleai", 800);
   }
@@ -1465,7 +1716,7 @@ ipcMain.on("close-googleai", (_, prompt: string) => {
           setSessionState(state);
         }
       } catch { }
-      removeBrowserView(mainWindow, googleaiView, websites, views, { promptAreaHeight, sidebarWidth });
+      cacheProviderView("googleai", googleaiView);
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-googleai", 800);
     }
@@ -1482,9 +1733,11 @@ ipcMain.on("open-reddit", (_, prompt: string) => {
     let url = (last && last.length > 0)
       ? last
       : ((tab?.url && tab.url.length > 0) ? tab.url : PROVIDER_BASE_URL["reddit"]);
-    const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
-    wireViewUrlPersistence(v);
-    setupViewContextMenu(v);
+    if (!restoreCachedView("reddit", url)) {
+      const v = addBrowserView(mainWindow, url, websites, views, { promptAreaHeight, sidebarWidth });
+      wireViewUrlPersistence(v);
+      setupViewContextMenu(v);
+    }
     void adjustBrowserViewBounds();
     scheduleSaveActiveLayoutSnapshot("open-reddit", 800);
   }
@@ -1506,101 +1759,11 @@ ipcMain.on("close-reddit", (_, prompt: string) => {
           setSessionState(state);
         }
       } catch { }
-      removeBrowserView(mainWindow, redditView, websites, views, { promptAreaHeight, sidebarWidth });
+      cacheProviderView("reddit", redditView);
       void adjustBrowserViewBounds();
       scheduleSaveActiveLayoutSnapshot("close-reddit", 800);
     }
   }
 });
 
-ipcMain.on("open-edit-view", (_, prompt: string) => {
-  console.log("Opening edit view for prompt:", prompt);
-  prompt = prompt.normalize("NFKC");
 
-  const editWindow = new BrowserWindow({
-    width: 500,
-    height: 600,
-    parent: formWindow || mainWindow, // Use mainWindow as a fallback if formWindow is null
-    modal: true, // Make it a modal window
-    webPreferences: {
-      preload: path.join(__dirname, "..", "dist", "form_preload.js"), // Use the same preload script
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  editWindow.loadFile(path.join(__dirname, "..", "src", "edit_prompt.html"));
-  // Optionally, inject the prompt into the textarea
-  editWindow.webContents.once("did-finish-load", () => {
-    editWindow.webContents.executeJavaScript(`
-      const textarea = document.getElementById('template-content');
-      if (textarea) {
-        textarea.value = \`${prompt}\`;
-      }
-    `);
-  });
-
-  console.log("Edit window created.");
-});
-
-ipcMain.on("edit-prompt-ready", (event) => {
-  if (pendingRowSelectedKey) {
-    event.sender.send("row-selected", pendingRowSelectedKey);
-    console.log(
-      `Sent row-selected message to edit_prompt.html with key: ${pendingRowSelectedKey} (on renderer ready)`,
-    );
-    pendingRowSelectedKey = null;
-  } else {
-    console.log("edit-prompt-ready received, but no pending key to send.");
-  }
-});
-
-ipcMain.on(
-  "update-prompt",
-  (_, { key, value }: { key: string; value: string }) => {
-    if (store.has(key)) {
-      store.set(key, value);
-      console.log(`Updated prompt with key "${key}" to: "${value}"`);
-    } else {
-      console.error(`No entry found for key: "${key}"`);
-    }
-  },
-);
-
-ipcMain.on("row-selected", (_, key: string) => {
-  console.log(`Row selected with key: ${key}`);
-  pendingRowSelectedKey = key;
-});
-
-// Add handler to fetch the key from the store based on the value.
-ipcMain.handle("get-key-by-value", (_, value: string) => {
-  value = value.normalize("NFKC"); // Normalize the value for consistency
-  const allEntries = store.store; // Get all key-value pairs from the store
-
-  console.log("Store contents:", allEntries); // Log the store contents
-
-  // Find the key that matches the given value
-  const matchingKey = Object.keys(allEntries).find(
-    (key) => allEntries[key] === value,
-  );
-
-  if (matchingKey) {
-    console.log(`Found key "${matchingKey}" for value: "${value}"`);
-    return matchingKey;
-  } else {
-    console.error(`No matching key found for value: "${value}"`);
-    return null;
-  }
-});
-
-ipcMain.on("close-edit-window", (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (win) {
-    win.close();
-
-    // Notify the form window to refresh the table
-    if (formWindow && !formWindow.isDestroyed()) {
-      formWindow.webContents.send("refresh-prompt-table");
-    }
-  }
-});

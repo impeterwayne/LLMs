@@ -6,6 +6,12 @@ import { JS_SET_TEXTAREA_VALUE, JS_SIMULATE_ENTER, loadScript } from './shared.j
 // ═══════════════════════════════════════════════════════════════
 const SELECTORS = {
     editor: 'textarea',
+    // DeepSeek uses hashed class names with no stable aria-labels on buttons.
+    // We extract response text directly from the markdown container.
+    markdownContent: [
+        '.ds-markdown',
+        '.ds-message .ds-markdown',
+    ],
 };
 
 export const deepseek: Provider = {
@@ -23,5 +29,11 @@ export const deepseek: Provider = {
         return loadScript('deepseek', 'send', {
             '__EDITOR_SELECTOR__': SELECTORS.editor,
         }, JS_SIMULATE_ENTER);
+    },
+
+    buildCopyScript(): string {
+        return loadScript('deepseek', 'copy', {
+            '__MARKDOWN_SELECTORS__': JSON.stringify(SELECTORS.markdownContent[0]),
+        });
     },
 };

@@ -3,30 +3,53 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com;" />
   <title>Multi-LLM Interface</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
       color-scheme: dark;
-      --surface: #1f1f1f;
-      --surface-high: #272727;
-      --surface-variant: #2f2f2f;
-      --outline: #3d3d3d;
-      --text-primary: #f5f5f5;
-      --text-secondary: #c7c7c7;
+
+      /* ── Surface palette ── */
+      --bg: #0e0e10;
+      --surface: #18181b;
+      --surface-high: #1f1f23;
+      --surface-variant: #27272a;
+
+      /* ── Text ── */
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+
+      /* ── Accent ── */
       --accent: #8ab4f8;
       --accent-hover: #6ea3f7;
-      --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
-      --radius-large: 20px;
-      --radius-medium: 14px;
+      --accent-dim: rgba(138, 180, 248, 0.12);
+      --accent-glow: rgba(138, 180, 248, 0.20);
+
+      /* ── Borders ── */
+      --border: #27272a;
+      --border-subtle: rgba(255, 255, 255, 0.06);
+
+      /* ── Radii ── */
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+
+      /* ── Layout ── */
       --app-viewport-height: 1vh;
       --sidebar-width: 280px;
       --sidebar-max: 280px;
       --sessions-button-size: 36px;
-      /* unified size for header buttons */
       --sessions-header-pad: 8px;
-      /* consistent padding around header items */
       --sidebar-rail: calc(var(--sessions-button-size) + (2 * var(--sessions-header-pad)));
+      --header-height: 44px;
+
+      /* ── Typography ── */
+      --font: "Inter", system-ui, -apple-system, sans-serif;
     }
 
     * {
@@ -43,12 +66,11 @@
       height: 100vh;
       min-height: 100vh;
       padding: 0;
-      background: radial-gradient(circle at top, #2a2a2a, #141414 65%, #0f0f0f);
-      font-family: "Inter", "Segoe UI", sans-serif;
+      background: var(--bg);
+      font-family: var(--font);
       color: var(--text-primary);
-      transition: justify-content 0.3s ease;
+      transition: justify-content 0.2s ease;
       overflow: hidden;
-      /* avoid page scroll; layout fits viewport */
     }
 
     body.is-overflowing {
@@ -62,112 +84,130 @@
       }
     }
 
+    /* ── Reduced motion ── */
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ── Provider Toggles ── */
     .provider-toggle {
       flex: 1;
-      min-height: 40px;
-      font-size: 14px;
-      font-weight: 600;
-      padding: 8px;
-      border-radius: var(--radius-medium);
-      border: 1px solid var(--outline);
-      background: linear-gradient(180deg, var(--surface-high), var(--surface-variant));
-      color: var(--text-secondary);
+      min-height: 36px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease,
-        border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
-      opacity: 0.6;
-      /* default disabled state */
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
 
     .provider-toggle.active {
-      opacity: 1;
-      border-color: var(--accent);
       color: var(--text-primary);
-      box-shadow: 0 4px 12px rgba(138, 180, 248, 0.25);
+      border-color: var(--accent);
+      background: var(--accent-dim);
     }
 
     .provider-toggle:hover {
-      border-color: var(--accent);
-      color: var(--text-primary);
-      transform: translateY(-1px);
+      color: var(--text-secondary);
+      border-color: var(--text-muted);
     }
 
-    /* Research provider styling (Google AI, Reddit) */
+    .provider-toggle.active:hover {
+      color: var(--text-primary);
+      border-color: var(--accent);
+    }
+
+    /* Research provider accent */
     .provider-toggle.provider-research.active {
       border-color: #34a853;
-      box-shadow: 0 4px 12px rgba(52, 168, 83, 0.3);
+      background: rgba(52, 168, 83, 0.10);
     }
 
     .provider-toggle.provider-research:hover {
-      border-color: #34a853;
+      border-color: rgba(52, 168, 83, 0.5);
+    }
+
+    .provider-toggle svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
     }
 
     /* Provider divider */
     .provider-divider {
       width: 1px;
-      height: 28px;
-      background: var(--outline);
+      height: 24px;
+      background: var(--border);
       margin: 0 4px;
       align-self: center;
-      opacity: 0.5;
     }
 
+    /* ── Prompt Area ── */
     #prompt-area {
       position: fixed;
       left: min(var(--sidebar-width, 280px), var(--sidebar-max, 280px));
       right: 0;
       bottom: 0;
       display: flex;
-      gap: 12px;
-      padding: 14px;
-      border-radius: 0;
-      min-height: 120px;
+      gap: 10px;
+      padding: 12px;
+      min-height: 110px;
       align-items: stretch;
       width: auto;
-      background-color: var(--surface);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      box-shadow: var(--shadow);
+      background: var(--surface);
+      border-top: 1px solid var(--border);
       flex-direction: column;
-      /* make room for header + input */
     }
 
     #prompt-area.drag-active {
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.35);
       background: linear-gradient(135deg,
-          rgba(138, 180, 248, 0.12),
-          rgba(138, 180, 248, 0.05));
+          var(--accent-dim),
+          transparent);
     }
 
     #prompt-input {
       flex: 1;
-      padding: 14px;
-      font-size: 18px;
-      font-family: "Inter", "Segoe UI", sans-serif;
+      padding: 12px 14px;
+      font-size: 15px;
+      font-family: var(--font);
       line-height: 1.6;
       background: var(--surface-high);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-large);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
       color: var(--text-primary);
       resize: none;
-      transition: border 0.2s ease, box-shadow 0.2s ease;
+      transition: border-color 0.15s;
     }
 
     #prompt-input::placeholder {
-      color: var(--text-secondary);
+      color: var(--text-muted);
     }
 
     #prompt-input:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(138, 180, 248, 0.25);
     }
 
+    /* ── Button Group ── */
     .button-group {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      width: 208px;
+      width: 180px;
     }
 
     .dropdown,
@@ -183,17 +223,16 @@
     #dropdown-button,
     .utility-button {
       width: 100%;
-      min-height: 46px;
-      font-size: 15px;
+      min-height: 40px;
+      font-size: 13px;
       font-weight: 600;
-      padding: 10px 14px;
-      border-radius: var(--radius-medium);
-      border: 1px solid var(--outline);
-      background: linear-gradient(180deg, var(--surface-high), var(--surface-variant));
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface-high);
       color: var(--text-secondary);
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease,
-        border-color 0.15s ease, color 0.15s ease;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
       text-align: center;
     }
 
@@ -201,48 +240,49 @@
     .utility-button:hover {
       border-color: var(--accent);
       color: var(--text-primary);
-      box-shadow: 0 6px 20px rgba(138, 180, 248, 0.25);
-      transform: translateY(-1px);
     }
 
     .utility-button {
-      background: linear-gradient(180deg, var(--accent), var(--accent-hover));
-      color: #0b182f;
+      background: var(--accent);
+      color: var(--bg);
       border-color: transparent;
+      font-weight: 600;
     }
 
     .utility-button:hover {
-      box-shadow: 0 10px 28px rgba(138, 180, 248, 0.35);
+      background: var(--accent-hover);
+      color: var(--bg);
     }
 
     .dropdown-content {
       display: none;
       position: absolute;
-      top: calc(100% + 8px);
+      top: calc(100% + 6px);
       left: 0;
       width: 100%;
       background-color: var(--surface-high);
-      border-radius: var(--radius-medium);
-      border: 1px solid var(--outline);
-      padding: 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      padding: 6px;
       max-height: 200px;
       overflow-y: auto;
-      box-shadow: var(--shadow);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
       z-index: 1000;
     }
 
     .dropdown-item {
       width: 100%;
-      padding: 10px 12px;
-      border-radius: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
       cursor: pointer;
       font-weight: 500;
+      font-size: 13px;
       color: var(--text-secondary);
-      transition: background-color 0.15s ease, color 0.15s ease;
+      transition: background-color 0.12s, color 0.12s;
     }
 
     .dropdown-item:hover {
-      background-color: rgba(138, 180, 248, 0.12);
+      background-color: var(--accent-dim);
       color: var(--text-primary);
     }
 
@@ -250,40 +290,166 @@
       display: block;
     }
 
-    /* Chat header inside prompt area */
+    /* ── Chat Header ── */
     .chat-header {
       display: flex;
       gap: 6px;
       align-items: center;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
 
-    /* Chat input row */
+    /* ── Chat Input Row ── */
     .chat-input-row {
       display: flex;
-      gap: 14px;
+      gap: 8px;
       align-items: stretch;
     }
 
-    /* Sessions Sidebar */
+    .chat-input-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      justify-content: center;
+    }
+
+    /* ── Send Button ── */
+    #send-prompt-btn {
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: var(--bg);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    #send-prompt-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    #send-prompt-btn:active {
+      transform: scale(0.92);
+    }
+
+    #send-prompt-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* ── Prompt Icon Button (generic) ── */
+    .prompt-icon-btn {
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: var(--bg);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+
+    .prompt-icon-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .prompt-icon-btn:active {
+      transform: scale(0.92);
+    }
+
+    .prompt-icon-btn.copied {
+      border-color: #34a853;
+      color: #34a853;
+    }
+
+    .prompt-icon-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* ── Toast ── */
+    #toast-container {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 8px;
+    }
+
+    .toast {
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: var(--surface-high);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: var(--font);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      transform: translateY(12px);
+      animation: toastIn 0.2s ease forwards;
+      white-space: nowrap;
+    }
+
+    .toast.success {
+      border-color: #34a853;
+      color: #34a853;
+    }
+
+    .toast.error {
+      border-color: #ea4335;
+      color: #ea4335;
+    }
+
+    .toast.fade-out {
+      animation: toastOut 0.25s ease forwards;
+    }
+
+    @keyframes toastIn {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes toastOut {
+      to {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+    }
+
+    /* ── Sessions Sidebar ── */
     #sessions-sidebar {
       position: fixed;
       top: 0;
       left: 0;
       bottom: 0;
-      /* match full app window height */
       width: min(var(--sidebar-width, 280px), var(--sidebar-max, 280px));
       max-width: var(--sidebar-max, 280px);
       background: var(--surface);
-      border-right: 1px solid var(--outline);
-      box-shadow: var(--shadow);
+      border-right: 1px solid var(--border);
       overflow: hidden;
       display: flex;
       flex-direction: column;
       z-index: 10;
     }
 
-    /* collapse is managed via body.sidebar-collapsed rules */
     #sessions-sidebar.no-transition {
       transition: none !important;
     }
@@ -305,12 +471,35 @@
 
     body.sidebar-collapsed #sessions-sidebar .sessions-header {
       border-bottom: none;
-      padding: 10px;
+      padding: 6px;
+      justify-content: center;
+      align-items: center;
+      gap: 0;
     }
 
-    body.sidebar-collapsed #sessions-sidebar #toggle-sessions {
+    body.sidebar-collapsed #sessions-sidebar .sessions-actions {
+      gap: 4px;
+      flex-direction: column;
+      align-items: center;
       width: 100%;
-      height: 28px;
+    }
+
+    body.sidebar-collapsed #sessions-sidebar #toggle-sessions,
+    body.sidebar-collapsed #sessions-sidebar #collapsed-new-session,
+    body.sidebar-collapsed #sessions-sidebar #settings-btn {
+      width: 32px;
+      height: 32px;
+      margin: 0 auto;
+      padding: 0;
+    }
+
+    body.sidebar-collapsed #sessions-sidebar #collapsed-new-session {
+      display: inline-flex;
+    }
+
+    /* In collapsed column layout: toggle first, then new-session, then settings */
+    body.sidebar-collapsed #sessions-sidebar #settings-btn {
+      order: 10;
     }
 
     .sessions-header {
@@ -318,49 +507,73 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: var(--sessions-header-pad);
-      border-bottom: 1px solid var(--outline);
+      padding: 10px 10px;
+      border-bottom: 1px solid var(--border);
     }
 
     .sessions-title {
-      font-weight: 700;
-      font-size: 14px;
-      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
     }
 
     .sessions-actions {
       display: flex;
-      gap: 6px;
+      gap: 4px;
     }
 
     .sessions-btn {
-      border: 1px solid var(--outline);
-      background: var(--surface-high);
+      border: 1px solid var(--border);
+      background: transparent;
       color: var(--text-secondary);
-      border-radius: 8px;
-      height: var(--sessions-button-size);
-      padding: 0 12px;
+      border-radius: 6px;
+      height: 32px;
+      padding: 0 10px;
       font-size: 12px;
+      font-weight: 500;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 4px;
       box-sizing: border-box;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+    }
+
+    .sessions-btn:hover {
+      background: var(--accent-dim);
+      border-color: transparent;
+      color: var(--text-primary);
+    }
+
+    .sessions-btn svg,
+    .sessions-icon-btn svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
     }
 
     .sessions-icon-btn {
-      border: 1px solid var(--outline);
-      background: var(--surface-high);
-      color: var(--text-secondary);
-      border-radius: 8px;
-      width: var(--sessions-button-size);
-      height: var(--sessions-button-size);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
       cursor: pointer;
       box-sizing: border-box;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+
+    .sessions-icon-btn:hover {
+      background: var(--accent-dim);
+      border-color: transparent;
+      color: var(--text-primary);
     }
 
     .collapsed-only {
@@ -370,7 +583,7 @@
     .sessions-list {
       flex: 1;
       overflow-y: auto;
-      padding: 8px;
+      padding: 6px;
     }
 
     .session-item {
@@ -378,105 +591,588 @@
       align-items: center;
       gap: 8px;
       padding: 8px 10px;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
       color: var(--text-secondary);
+      font-size: 13px;
+      transition: background 0.12s, color 0.12s;
     }
 
     .session-item:hover {
-      background: rgba(138, 180, 248, 0.10);
+      background: var(--accent-dim);
       color: var(--text-primary);
     }
 
     .session-item.active {
-      background: rgba(138, 180, 248, 0.18);
+      background: var(--accent-glow);
       color: var(--text-primary);
     }
 
     .sessions-footer {
       padding: 8px;
-      border-top: 1px solid var(--outline);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .sessions-footer .sessions-btn {
-      width: 100%;
+      flex: 1;
     }
 
-    /* Collapse adjustments */
-    body.sidebar-collapsed #prompt-area {
-      left: var(--sidebar-rail, 40px);
+    .sessions-footer .sessions-icon-btn {
+      flex-shrink: 0;
     }
 
-    body.sidebar-collapsed #sessions-sidebar {
-      width: var(--sidebar-rail, 40px) !important;
-    }
-
-    body.sidebar-collapsed #sessions-sidebar .sessions-title,
-    body.sidebar-collapsed #sessions-sidebar #new-session,
-    body.sidebar-collapsed #sessions-sidebar .sessions-list,
-    body.sidebar-collapsed #sessions-sidebar .sessions-footer {
+    /* ── Settings Overlay ── */
+    #settings-overlay {
       display: none;
-    }
-
-    body.sidebar-collapsed #sessions-sidebar .sessions-header {
-      border-bottom: none;
-      padding: var(--sessions-header-pad);
-      padding-inline-end: 0;
-      /* no end margin after collapse */
-      justify-content: center;
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       align-items: center;
-      gap: 0;
+      justify-content: center;
+      animation: settingsFadeIn 0.15s ease;
     }
 
-    body.sidebar-collapsed #sessions-sidebar .sessions-actions {
+    #settings-overlay.visible {
+      display: flex;
+    }
+
+    @keyframes settingsFadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes settingsSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .settings-panel {
+      width: 520px;
+      max-width: 90vw;
+      max-height: 80vh;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: settingsSlideIn 0.2s ease;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .settings-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .settings-close-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .settings-close-btn:hover {
+      background: var(--accent-dim);
+      color: var(--text-primary);
+    }
+
+    .settings-close-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .settings-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .settings-section {
+      margin-bottom: 24px;
+    }
+
+    .settings-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .settings-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .settings-field {
+      margin-bottom: 14px;
+    }
+
+    .settings-field:last-child {
+      margin-bottom: 0;
+    }
+
+    .settings-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .settings-input {
+      width: 100%;
+      height: 36px;
+      background: var(--surface-high);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      padding: 0 12px;
+      font-size: 13px;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .settings-input:focus {
+      border-color: var(--accent);
+    }
+
+    .settings-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* Provider grid for workspace */
+    .workspace-provider-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .workspace-provider-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface-high);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .workspace-provider-item:hover {
+      border-color: var(--text-muted);
+    }
+
+    .workspace-provider-item.checked {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .workspace-provider-item input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border: 1.5px solid var(--text-muted);
+      border-radius: 4px;
+      background: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      position: relative;
+      transition: background 0.12s, border-color 0.12s;
+    }
+
+    .workspace-provider-item input[type="checkbox"]:checked {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .workspace-provider-item input[type="checkbox"]:checked::after {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 5px;
+      height: 9px;
+      border: solid var(--bg);
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .workspace-provider-item .provider-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: color 0.12s;
+    }
+
+    .workspace-provider-item.checked .provider-name {
+      color: var(--text-primary);
+    }
+
+    .settings-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .settings-btn-secondary {
+      height: 34px;
+      padding: 0 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .settings-btn-secondary:hover {
+      border-color: var(--text-muted);
+      color: var(--text-primary);
+    }
+
+    .settings-btn-primary {
+      height: 34px;
+      padding: 0 20px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .settings-btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .settings-saved-indicator {
+      font-size: 12px;
+      color: #34a853;
+      opacity: 0;
+      transition: opacity 0.2s;
+      margin-right: auto;
+    }
+
+    .settings-saved-indicator.show {
+      opacity: 1;
+    }
+
+    /* Workspace presets */
+    .workspace-presets {
+      display: flex;
       gap: 6px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .workspace-preset-btn {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-high);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .workspace-preset-btn:hover {
+      border-color: var(--accent);
+      color: var(--text-primary);
+    }
+
+    .workspace-preset-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+      color: var(--text-primary);
+    }
+
+    /* Layout mode picker */
+    .layout-mode-grid {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .layout-mode-btn {
+      display: flex;
       flex-direction: column;
       align-items: center;
+      gap: 6px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface-high);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      min-width: 72px;
     }
 
-    /* Tighter start margin and small end spacing for the rail icon */
-    body.sidebar-collapsed #sessions-sidebar #toggle-sessions {
-      margin-block: 0;
-      margin-inline-start: 2px;
-      margin-inline-end: 6px;
-      width: var(--sessions-button-size);
-      height: var(--sessions-button-size);
+    .layout-mode-btn:hover {
+      border-color: var(--text-muted);
     }
 
-    body.sidebar-collapsed #sessions-sidebar #collapsed-new-session {
-      display: inline-flex;
-      margin-block: 0;
-      margin-inline-start: 2px;
-      margin-inline-end: 6px;
-      width: var(--sessions-button-size);
-      height: var(--sessions-button-size);
-
+    .layout-mode-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-dim);
     }
 
-    /* View Headers */
+    .layout-mode-btn svg {
+      width: 32px;
+      height: 24px;
+      color: var(--text-muted);
+      transition: color 0.15s;
+    }
+
+    .layout-mode-btn.active svg {
+      color: var(--accent);
+    }
+
+    .layout-mode-btn .layout-label {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: color 0.12s;
+    }
+
+    .layout-mode-btn.active .layout-label {
+      color: var(--text-primary);
+    }
+
+    /* Toggle switch */
+    .settings-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+    }
+
+    .settings-toggle-row+.settings-toggle-row {
+      border-top: 1px solid var(--border);
+    }
+
+    .settings-toggle-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .settings-toggle-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--surface-high);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .toggle-slider::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle-switch input:checked+.toggle-slider {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+    }
+
+    .toggle-switch input:checked+.toggle-slider::after {
+      transform: translateX(18px);
+      background: var(--accent);
+    }
+
+    /* ── View Headers ── */
     #view-headers-container {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
-      height: 44px;
-      /* Matches HEADER_HEIGHT in main.ts */
+      height: var(--header-height);
       pointer-events: none;
-      /* Let clicks pass through empty areas */
       z-index: 100;
+    }
+
+    /* Stack Tab Bar */
+    #stack-tab-bar {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--header-height);
+      z-index: 101;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      gap: 2px;
+      padding: 0 6px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+    }
+
+    #stack-tab-bar::-webkit-scrollbar {
+      display: none;
+    }
+
+    #stack-tab-bar.visible {
+      display: flex;
+    }
+
+    .stack-tab {
+      height: 30px;
+      padding: 0 14px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+
+    .stack-tab:hover {
+      background: var(--accent-dim);
+      color: var(--text-primary);
+    }
+
+    .stack-tab.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--text-primary);
+    }
+
+    .stack-tab .stack-tab-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.12s;
+    }
+
+    .stack-tab.active .stack-tab-dot {
+      background: var(--accent);
+    }
+
+    .stack-tab-nav {
+      height: 30px;
+      width: 30px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .stack-tab-nav:hover {
+      background: var(--accent-dim);
+      color: var(--text-primary);
     }
 
     .view-header {
       position: absolute;
       top: 0;
-      height: 44px;
+      height: var(--header-height);
       display: flex;
       align-items: center;
       gap: 8px;
       padding: 0 8px;
       background: var(--surface);
-      border-bottom: 1px solid var(--outline);
-      border-right: 1px solid var(--outline);
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
       pointer-events: auto;
       box-sizing: border-box;
     }
@@ -485,11 +1181,12 @@
       flex: 1;
       height: 28px;
       background: var(--surface-high);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-medium);
+      border: 1px solid var(--border);
+      border-radius: 6px;
       color: var(--text-primary);
       padding: 0 10px;
       font-size: 13px;
+      font-family: var(--font);
       outline: none;
       transition: border-color 0.15s;
     }
@@ -502,19 +1199,18 @@
       height: 28px;
       padding: 0 10px;
       background: var(--surface-high);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-medium);
+      border: 1px solid var(--border);
+      border-radius: 6px;
       color: var(--text-secondary);
       font-size: 12px;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: border-color 0.15s, color 0.15s;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .view-header button:hover {
-      background: var(--surface-variant);
       color: var(--text-primary);
       border-color: var(--accent);
     }
@@ -541,21 +1237,46 @@
 <body class="sidebar-collapsed">
   <aside id="sessions-sidebar">
     <div class="sessions-header">
-      <div class="sessions-title">Recent sessions</div>
+      <div class="sessions-title">Sessions</div>
       <div class="sessions-actions">
-        <button class="sessions-btn" id="new-session">+ New</button>
-        <button class="sessions-icon-btn" id="toggle-sessions" title="Toggle sidebar">></button>
+        <button class="sessions-icon-btn" id="settings-btn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+        <button class="sessions-btn" id="new-session">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
+          New
+        </button>
+        <button class="sessions-icon-btn" id="toggle-sessions" title="Toggle sidebar" aria-label="Toggle sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M3 3h7v18H3z" />
+            <path d="M14 9l3 3-3 3" />
+          </svg>
+        </button>
         <button class="sessions-icon-btn collapsed-only" id="collapsed-new-session" title="New session"
           aria-label="New session">
-          +
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
         </button>
       </div>
     </div>
     <div class="sessions-list" id="sessions-list" role="listbox" tabindex="0"></div>
-    <div class="sessions-footer"></div>
   </aside>
 
   <div id="view-headers-container"></div>
+  <div id="stack-tab-bar"></div>
   <div id="prompt-area">
     <div class="chat-header">
       <button class="provider-toggle" data-provider="chatgpt">ChatGPT</button>
@@ -565,15 +1286,195 @@
       <button class="provider-toggle" data-provider="grok">Grok</button>
       <button class="provider-toggle" data-provider="deepseek">DeepSeek</button>
       <span class="provider-divider"></span>
-      <button class="provider-toggle provider-research" data-provider="googleai">🔍 Google</button>
-      <button class="provider-toggle provider-research" data-provider="reddit">📱 Reddit</button>
+      <button class="provider-toggle provider-research" data-provider="googleai">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        Google
+      </button>
+      <button class="provider-toggle provider-research" data-provider="reddit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        Reddit
+      </button>
     </div>
     <div class="chat-input-row">
-      <textarea id="prompt-input" rows="3" placeholder="Press Ctrl + Enter to send prompt"></textarea>
-      <div class="button-group">
-        <button class="utility-button" id="copy-all-answers">
-          Copy All Answers
+      <textarea id="prompt-input" rows="3" placeholder="Type your prompt here..."></textarea>
+      <div class="chat-input-actions">
+        <button id="send-prompt-btn" title="Send (Ctrl+Enter)" aria-label="Send prompt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
         </button>
+        <button class="prompt-icon-btn" id="copy-all-answers" title="Copy All Answers" aria-label="Copy All Answers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div id="toast-container"></div>
+  </div>
+
+  <!-- Settings Overlay -->
+  <div id="settings-overlay">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button class="settings-close-btn" id="settings-close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-section">
+          <div class="settings-section-title">Custom Workspace</div>
+          <div class="settings-field">
+            <label class="settings-label" for="workspace-name">Workspace Name</label>
+            <input type="text" class="settings-input" id="workspace-name" placeholder="My Workspace" />
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Layout</div>
+          <div class="settings-field">
+            <div class="layout-mode-grid">
+              <!-- Row -->
+              <button class="layout-mode-btn active" data-layout="row" title="Horizontal row">
+                <svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="1" y="2" width="9" height="20" rx="1.5" />
+                  <rect x="11.5" y="2" width="9" height="20" rx="1.5" />
+                  <rect x="22" y="2" width="9" height="20" rx="1.5" />
+                </svg>
+                <span class="layout-label">Row</span>
+              </button>
+              <!-- Grid Auto -->
+              <button class="layout-mode-btn" data-layout="grid-auto" title="Auto grid">
+                <svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="1" y="1" width="14" height="10" rx="1.5" />
+                  <rect x="17" y="1" width="14" height="10" rx="1.5" />
+                  <rect x="1" y="13" width="14" height="10" rx="1.5" />
+                  <rect x="17" y="13" width="14" height="10" rx="1.5" />
+                </svg>
+                <span class="layout-label">Auto</span>
+              </button>
+              <!-- 2 Columns -->
+              <button class="layout-mode-btn" data-layout="grid-2col" title="2 columns">
+                <svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="1" y="1" width="14" height="10" rx="1.5" />
+                  <rect x="17" y="1" width="14" height="10" rx="1.5" />
+                  <rect x="1" y="13" width="14" height="10" rx="1.5" />
+                  <rect x="17" y="13" width="14" height="10" rx="1.5" opacity="0.3" stroke-dasharray="2 2" />
+                </svg>
+                <span class="layout-label">2 Col</span>
+              </button>
+              <!-- 2 Rows -->
+              <button class="layout-mode-btn" data-layout="grid-2row" title="2 rows">
+                <svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="1" y="1" width="9" height="22" rx="1.5" />
+                  <rect x="11.5" y="1" width="9" height="22" rx="1.5" />
+                  <rect x="22" y="1" width="9" height="10" rx="1.5" />
+                  <rect x="22" y="13" width="9" height="10" rx="1.5" />
+                </svg>
+                <span class="layout-label">2 Row</span>
+              </button>
+              <!-- Stack -->
+              <button class="layout-mode-btn" data-layout="stack" title="Stacked (single view)">
+                <svg viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="3" y="3" width="26" height="18" rx="2" />
+                  <rect x="5" y="5" width="22" height="14" rx="1" opacity="0.3" />
+                  <rect x="7" y="7" width="18" height="10" rx="1" opacity="0.15" />
+                </svg>
+                <span class="layout-label">Stack</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Display</div>
+          <div class="settings-field">
+            <div class="settings-toggle-row">
+              <div>
+                <div class="settings-toggle-label">Address Bar</div>
+                <div class="settings-toggle-desc">Show URL bar above each provider view</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggle-address-bar" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="settings-toggle-row">
+              <div>
+                <div class="settings-toggle-label">Provider Bar</div>
+                <div class="settings-toggle-desc">Show provider toggles above the prompt</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggle-provider-bar" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">Default Providers</div>
+          <div class="settings-field">
+            <div class="workspace-presets">
+              <button class="workspace-preset-btn" data-preset="all">All</button>
+              <button class="workspace-preset-btn" data-preset="minimal">Minimal</button>
+              <button class="workspace-preset-btn" data-preset="research">Research</button>
+              <button class="workspace-preset-btn" data-preset="none">None</button>
+            </div>
+          </div>
+          <div class="workspace-provider-grid" id="workspace-providers">
+            <label class="workspace-provider-item">
+              <input type="checkbox" data-provider="chatgpt" />
+              <span class="provider-name">ChatGPT</span>
+            </label>
+            <label class="workspace-provider-item">
+              <input type="checkbox" data-provider="gemini" />
+              <span class="provider-name">Gemini</span>
+            </label>
+            <label class="workspace-provider-item">
+              <input type="checkbox" data-provider="perplexity" />
+              <span class="provider-name">Perplexity</span>
+            </label>
+            <label class="workspace-provider-item">
+              <input type="checkbox" data-provider="claude" />
+              <span class="provider-name">Claude</span>
+            </label>
+            <label class="workspace-provider-item">
+              <input type="checkbox" data-provider="grok" />
+              <span class="provider-name">Grok</span>
+            </label>
+            <label class="workspace-provider-item">
+              <input type="checkbox" data-provider="deepseek" />
+              <span class="provider-name">DeepSeek</span>
+            </label>
+            <label class="workspace-provider-item">
+              <input type="checkbox" data-provider="googleai" />
+              <span class="provider-name">Google AI</span>
+            </label>
+            <label class="workspace-provider-item">
+              <input type="checkbox" data-provider="reddit" />
+              <span class="provider-name">Reddit</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="settings-footer">
+        <span class="settings-saved-indicator" id="settings-saved">✓ Saved</span>
+        <button class="settings-btn-secondary" id="settings-cancel">Cancel</button>
+        <button class="settings-btn-primary" id="settings-save">Save & Apply</button>
       </div>
     </div>
   </div>
