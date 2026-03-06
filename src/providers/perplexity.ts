@@ -39,7 +39,7 @@ export const perplexity: Provider = {
     return loadScript('perplexity', 'send', {
       '__SELECTORS__': JSON.stringify(SELECTORS.sendButton),
       '__CLASS_FALLBACK__': SELECTORS.sendButtonClassFallback,
-    }, JS_CLICK_FIRST_BUTTON);
+    });
   },
 
   buildFileDropScript(files): string {

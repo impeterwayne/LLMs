@@ -55,9 +55,7 @@ h4,
 h5,
 h6,
 strong,
-b,
-.font-semibold,
-[class*="font-bold"] { color: #58aefd !important; }`;
+b { color: #58aefd !important; }`;
 
   return [
     {
@@ -295,17 +293,23 @@ function injectStyles(webContents: WebContents) {
 }
 
 export function applyCustomStyles(webContents: WebContents): void {
-  const applyStyles = () => {
+  const applyStyles = (fullReload: boolean) => {
+    if (fullReload) {
+      // Full page navigation wipes all injected <style> tags and window.__llmGodStyles.
+      // Clear the main-process cache so injectStyles treats it as a fresh injection.
+      appliedStyles.delete(webContents);
+      darkModeApplied.delete(webContents);
+    }
     ensureDarkColorScheme(webContents);
     injectStyles(webContents);
   };
 
-  webContents.on("did-finish-load", applyStyles);
-  webContents.on("did-navigate", applyStyles);
-  webContents.on("did-navigate-in-page", applyStyles);
+  webContents.on("did-finish-load", () => applyStyles(true));
+  webContents.on("did-navigate", () => applyStyles(true));
+  webContents.on("did-navigate-in-page", () => applyStyles(false));
 
   if (!webContents.isLoadingMainFrame()) {
-    applyStyles();
+    applyStyles(false);
   }
 }
 
