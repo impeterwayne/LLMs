@@ -301,6 +301,11 @@ export async function pipelineInjectPromptIntoView(
 /**
  * Send via Electron's native sendInputEvent — produces trusted Enter key events.
  * Used for providers like Perplexity that reject synthetic DOM events (isTrusted=false).
+ *
+ * Strategy:
+ *  1. Try JS-based submit button click first — this works even when the view
+ *     is in the background (not focused / not on active tab).
+ *  2. If no button was found, fall back to native Enter which requires focus.
  */
 async function sendViaNativeEnter(
   view: CustomBrowserView,
@@ -308,6 +313,27 @@ async function sendViaNativeEnter(
 ): Promise<PipelineResult> {
   const viewId = view.id || "unknown";
   try {
+    // ── Attempt 1: JS button click (focus-independent) ───────────────
+    const sendButtonSelectors = provider.sendButtonSelectors ?? [];
+    if (sendButtonSelectors.length > 0) {
+      const jsClickScript = `
+        (function() {
+          var selectors = ${JSON.stringify(sendButtonSelectors)};
+          for (var i = 0; i < selectors.length; i++) {
+            var btn = document.querySelector(selectors[i]);
+            if (btn) { btn.click(); return 'clicked'; }
+          }
+          return 'not_found';
+        })();
+      `;
+      const clickResult = await view.webContents.executeJavaScript(jsClickScript);
+      if (clickResult === 'clicked') {
+        console.log(`[Pipeline][${viewId}] Submitted via JS button click`);
+        return { viewId, success: true, stage: "send" };
+      }
+    }
+
+    // ── Attempt 2: Native Enter key (requires focus) ─────────────────
     // First, focus the editor element inside the page via JS
     // This is critical — webContents.focus() only focuses the Electron view,
     // not the actual contenteditable/textarea the Enter key needs to target.
@@ -363,8 +389,17 @@ export async function pipelineSendPromptInView(
     };
   }
 
-  // Native Enter key send — uses Electron's sendInputEvent for trusted events
+  // For native-Enter providers: try JS send first (focus-independent),
+  // then fall back to native Enter (requires view to be active/focused).
   if (provider.useNativeEnterToSend) {
+    const sendScript = provider.buildSendScript();
+    try {
+      await view.webContents.executeJavaScript(sendScript);
+      console.log(`[Pipeline][${view.id}] Submitted via JS send script`);
+      return { viewId: view.id || "unknown", success: true, stage: "send" };
+    } catch {
+      // Fall through to native Enter
+    }
     return sendViaNativeEnter(view, provider);
   }
 
@@ -418,16 +453,25 @@ export async function pipelineInjectAndSendAllViews(
       // Brief delay for UI to react
       await new Promise((r) => setTimeout(r, opts.injectToSendDelay ?? 300));
 
-      // Native Enter key send for providers that need trusted events
+      // For native-Enter providers: try JS send first (focus-independent),
+      // then fall back to native Enter (requires view to be active/focused).
       if (provider.useNativeEnterToSend) {
+        const sendScript = provider.buildSendScript();
+        try {
+          await view.webContents.executeJavaScript(sendScript);
+          console.log(`[Pipeline][${view.id}] Submitted via JS send script`);
+          return { viewId: view.id || "unknown", success: true, stage: "send" as const };
+        } catch (jsErr: any) {
+          console.warn(`[Pipeline][${view.id}] JS send failed, trying native Enter:`, jsErr.message);
+        }
         return sendViaNativeEnter(view, provider);
       }
 
-      // Standard JS send script
+      // Standard JS send script — no focusFn needed, button clicks work without
+      // Electron-level focus and calling focus() here would steal it from the user.
       const sendScript = provider.buildSendScript();
       return pipelineSend(view, sendScript, {
         sendButtonSelectors: provider.sendButtonSelectors ?? [],
-        focusFn: provider.focusBeforeSend ? () => view.webContents.focus() : undefined,
         ...opts,
       });
     }),

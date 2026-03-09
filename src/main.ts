@@ -24,7 +24,6 @@ import {
   injectPromptIntoView,
   sendPromptInView,
   pipelineInjectPromptIntoView,
-  pipelineSendPromptInView,
   pipelineInjectAndSendAllViews,
   simulateFileDropInView,
   ensureDetachedDevTools,
@@ -1130,7 +1129,7 @@ ipcMain.on("send-prompt", async (_evt, prompt: string) => {
 
     const state = getSessionState();
     if (!state.activeId) {
-      createNewSession(firstPrompt);
+      createNewSession(firstPrompt, true); // Fresh layout like Ctrl+N
     }
   } catch (err) {
     console.error("Failed to auto-create session on first message", err);
@@ -1155,18 +1154,23 @@ ipcMain.on("send-prompt", async (_evt, prompt: string) => {
     console.warn("Failed to auto-rename session", err);
   }
 
-  // Use pipeline-aware send — waits for each page to be ready
-  Promise.all(
-    views.map((view: CustomBrowserView) =>
-      pipelineSendPromptInView(view).catch((err) => {
-        console.warn(`[Pipeline] Send failed for ${view.id}:`, err);
-      }),
-    ),
-  ).catch((err) => {
+  // Use full inject+send pipeline — re-injects the prompt before sending.
+  // On new sessions the pages have reloaded and any prompt injected via
+  // live-typing has been lost, so we must inject again before sending.
+  pipelineInjectAndSendAllViews(views, prompt).then((results) => {
+    const failed = results.filter((r) => !r.success);
+    if (failed.length > 0) {
+      console.warn("[Pipeline] Some views failed in send-prompt pipeline:", failed);
+    }
+    // Final refocus after pipeline settles
+    mainWindow.webContents.focus();
+  }).catch((err) => {
     console.error("[Pipeline] Send pipeline error:", err);
+    mainWindow.webContents.focus();
   });
 
-  // Refocus main window so user's prompt input keeps focus
+  // Immediately refocus so the user can keep typing while the pipeline runs.
+  // The JS-based send approach doesn't need Electron-level focus, so this is safe.
   mainWindow.webContents.focus();
 
   // Delay snapshotting the layout so navigations can settle
