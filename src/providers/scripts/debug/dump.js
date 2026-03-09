@@ -42,7 +42,7 @@
         // For large containers, only show interactive/semantic children
         let children = '';
         const childNodes = node.childNodes;
-        if (childNodes.length > 100) {
+        if (childNodes.length > 500) {
             // Too many children — summarize
             children = `\n${indent}  <!-- ${childNodes.length} children, truncated -->`;
         } else {

@@ -41,6 +41,8 @@ export const reddit: Provider = {
   matchUrl: (url) => /reddit\.com/i.test(url),
   focusBeforeInject: true,
   focusBeforeSend: true,
+  editorSelectors: SELECTORS.editor,
+  sendButtonSelectors: SELECTORS.sendButton,
 
   buildInjectScript(prompt: string): string {
     return loadScript('reddit', 'inject', {

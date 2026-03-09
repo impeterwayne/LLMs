@@ -52,4 +52,26 @@ export interface Provider {
 
     /** Whether to call webContents.focus() before sending */
     focusBeforeSend?: boolean;
+
+    /**
+     * CSS selectors for the editor element. The command pipeline will poll
+     * for one of these to appear before executing the inject script.
+     * If empty/undefined, pipeline skips the poll step.
+     */
+    editorSelectors?: string[];
+
+    /**
+     * CSS selectors for the send button. The command pipeline will poll
+     * for one of these to appear before executing the send script.
+     * If empty/undefined, pipeline skips the poll step.
+     */
+    sendButtonSelectors?: string[];
+
+    /**
+     * When true, the pipeline will use Electron's native sendInputEvent
+     * to press Enter on the editor instead of executing the send script.
+     * This produces trusted events that pass isTrusted checks in React/Radix.
+     * Useful for providers like Perplexity that reject synthetic DOM events.
+     */
+    useNativeEnterToSend?: boolean;
 }

@@ -23,6 +23,9 @@ import {
   removeBrowserView,
   injectPromptIntoView,
   sendPromptInView,
+  pipelineInjectPromptIntoView,
+  pipelineSendPromptInView,
+  pipelineInjectAndSendAllViews,
   simulateFileDropInView,
   ensureDetachedDevTools,
   copyAnswerFromView,
@@ -709,9 +712,45 @@ app.whenReady().then(() => {
   });
 
   // Ctrl+N: create a new session with fresh default layout
+  // Wait for every view in the `views` array to finish loading.
+  // Resolves immediately for cached views that aren't loading.
+  function waitForAllViewsReady(timeoutMs = 10000): Promise<void> {
+    return new Promise((resolve) => {
+      if (views.length === 0) { resolve(); return; }
+
+      let pending = 0;
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; resolve(); } };
+      const tick = () => { if (--pending <= 0) done(); };
+
+      for (const view of views) {
+        if (!view.webContents.isDestroyed() && view.webContents.isLoading()) {
+          pending++;
+          view.webContents.once("did-finish-load", tick);
+          view.webContents.once("did-fail-load", tick);
+        }
+      }
+
+      if (pending === 0) { done(); return; }
+      // Safety timeout so we don't wait forever
+      setTimeout(done, timeoutMs);
+    });
+  }
+
   electronLocalShortcut.register(mainWindow, "Ctrl+N", () => {
     createNewSession(undefined, true);
     mainWindow.webContents.send("inject-prompt", "");
+    // Wait for all views to finish loading, then focus the prompt input
+    waitForAllViewsReady().then(() => {
+      // Brief extra delay for post-load focus settling
+      setTimeout(() => {
+        mainWindow.focus();
+        mainWindow.webContents.focus();
+        mainWindow.webContents.executeJavaScript(
+          `document.getElementById('prompt-input')?.focus()`
+        ).catch(() => { });
+      }, 150);
+    });
   });
 
   // Debug: Ctrl+Shift+D dumps DOM + screenshot for the focused view only.
@@ -768,13 +807,15 @@ app.whenReady().then(() => {
         // Send the text to the prompt area
         mainWindow.webContents.send("inject-prompt", text);
 
-        // Inject into all views after a short delay to allow loading
-        // 2.5s delay usually enough for base DOM to be ready for injection
-        setTimeout(() => {
-          views.forEach((view) => {
-            injectPromptIntoView(view, text);
-          });
-        }, 2500);
+        // Use command pipeline — waits for each page to be ready before injecting
+        pipelineInjectAndSendAllViews(views, text).then((results) => {
+          const failed = results.filter((r) => !r.success);
+          if (failed.length > 0) {
+            console.warn("[LLM-God] Some views failed in Ctrl+Q pipeline:", failed);
+          }
+        }).catch((err) => {
+          console.error("[LLM-God] Ctrl+Q pipeline error:", err);
+        });
       }
     }, 150);
   });
@@ -1037,6 +1078,9 @@ ipcMain.handle("copy-all-answers", async () => {
 
 
 ipcMain.on("enter-prompt", (_: IpcMainEvent, prompt: string) => {
+  // Fire-and-forget for live typing — pages are already loaded, no need
+  // for the pipeline's async page-readiness wait. Using the pipeline here
+  // would steal focus from the prompt input on every keystroke.
   views.forEach((view: CustomBrowserView) => {
     injectPromptIntoView(view, prompt);
   });
@@ -1092,8 +1136,34 @@ ipcMain.on("send-prompt", async (_evt, prompt: string) => {
     console.error("Failed to auto-create session on first message", err);
   }
 
-  views.forEach((view: CustomBrowserView) => {
-    sendPromptInView(view);
+  // Auto-rename session on first meaningful prompt (if title is still the default timestamp)
+  try {
+    const state = getSessionState();
+    if (state.activeId) {
+      const meta = state.items[state.activeId];
+      if (meta && /^Session \d{4}-\d{2}-\d{2}/.test(meta.title)) {
+        const clean = (prompt ?? "").trim().replace(/\s+/g, " ");
+        if (clean.length > 0) {
+          meta.title = clean.slice(0, 80);
+          meta.updatedAt = Date.now();
+          setSessionState(state);
+          mainWindow?.webContents.send("sessions:changed", { updatedIds: [state.activeId] });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to auto-rename session", err);
+  }
+
+  // Use pipeline-aware send — waits for each page to be ready
+  Promise.all(
+    views.map((view: CustomBrowserView) =>
+      pipelineSendPromptInView(view).catch((err) => {
+        console.warn(`[Pipeline] Send failed for ${view.id}:`, err);
+      }),
+    ),
+  ).catch((err) => {
+    console.error("[Pipeline] Send pipeline error:", err);
   });
 
   // Refocus main window so user's prompt input keeps focus

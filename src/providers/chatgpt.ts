@@ -25,6 +25,8 @@ const SELECTORS = {
 export const chatgpt: Provider = {
     id: 'chatgpt',
     matchUrl: (url) => /chatgpt\.com/i.test(url),
+    editorSelectors: SELECTORS.editor,
+    sendButtonSelectors: SELECTORS.sendButton,
 
     buildInjectScript(prompt: string): string {
         return loadScript('chatgpt', 'inject', {

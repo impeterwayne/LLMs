@@ -391,6 +391,12 @@ ipcRenderer.on("inject-prompt", (event, selectedPrompt: string) => {
   }
 });
 
+// Separate focus channel — only called when we explicitly want to steal focus to the prompt input
+ipcRenderer.on("focus-prompt", () => {
+  const promptInput = document.getElementById("prompt-input") as HTMLTextAreaElement;
+  if (promptInput) promptInput.focus();
+});
+
 // Initialize sessions sidebar after DOM is ready
 // Initialize embedded sessions sidebar (left, visible by default)
 if (document.readyState === "loading") {

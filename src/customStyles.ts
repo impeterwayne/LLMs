@@ -23,6 +23,7 @@ interface CompiledStyleDefinition {
 const LLM_HOST_PATTERNS = {
   chatgpt: /^https?:\/\/(?:www\.)?(?:chat\.openai\.com|chatgpt\.com)(?:[\/?#].*|$)/i,
   gemini: /^https?:\/\/gemini\.google\.com(?:[\/?#].*|$)/i,
+  googleai: /^https?:\/\/(?:www\.)?google\.com(?:[\/?#].*|$)/i,
   perplexity: /^https?:\/\/(?:www\.)?perplexity\.ai(?:[\/?#].*|$)/i,
   lmarena: /^https?:\/\/(?:www\.)?lmarena\.ai(?:[\/?#].*|$)/i,
   claude: /^https?:\/\/claude\.ai(?:[\/?#].*|$)/i,
@@ -34,6 +35,7 @@ const BUILT_IN_MATCH_GROUPS: Record<string, RegExp[]> = {
   "@llms": Object.values(LLM_HOST_PATTERNS),
   "@chatgpt": [LLM_HOST_PATTERNS.chatgpt],
   "@gemini": [LLM_HOST_PATTERNS.gemini],
+  "@googleai": [LLM_HOST_PATTERNS.googleai],
   "@perplexity": [LLM_HOST_PATTERNS.perplexity],
   "@lmarena": [LLM_HOST_PATTERNS.lmarena],
   "@claude": [LLM_HOST_PATTERNS.claude],
@@ -62,6 +64,12 @@ b { color: #58aefd !important; }`;
       match: "@llms",
       css: `/* ${HEADING_TINT_COMMENT} */
 ${headingSelectors}
+`,
+    },
+    {
+      match: "@googleai",
+      css: `/* Google AI Mode: custom heading elements (not h1-h6) */
+.AdPoic[role="heading"] { color: #58aefd !important; }
 `,
     },
   ];
@@ -304,8 +312,18 @@ export function applyCustomStyles(webContents: WebContents): void {
     injectStyles(webContents);
   };
 
-  webContents.on("did-finish-load", () => applyStyles(true));
-  webContents.on("did-navigate", () => applyStyles(true));
+  // Prevent pages from programmatically stealing focus via window.focus()
+  const neutralizeWindowFocus = () => {
+    webContents.executeJavaScript(`(() => {
+      if (!window.__llmGodFocusNeutralized) {
+        window.__llmGodFocusNeutralized = true;
+        window.focus = function() {};
+      }
+    })();`).catch(() => { });
+  };
+
+  webContents.on("did-finish-load", () => { applyStyles(true); neutralizeWindowFocus(); });
+  webContents.on("did-navigate", () => { applyStyles(true); neutralizeWindowFocus(); });
   webContents.on("did-navigate-in-page", () => applyStyles(false));
 
   if (!webContents.isLoadingMainFrame()) {

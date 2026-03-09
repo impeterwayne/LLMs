@@ -29,6 +29,8 @@ const SELECTORS = {
 export const grok: Provider = {
   id: 'grok',
   matchUrl: (url) => /grok\.com/i.test(url),
+  editorSelectors: [SELECTORS.editor, SELECTORS.textarea],
+  sendButtonSelectors: SELECTORS.sendButton,
 
   buildInjectScript(prompt: string): string {
     return loadScript('grok', 'inject', {

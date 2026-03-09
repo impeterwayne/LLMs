@@ -26,6 +26,10 @@ const SELECTORS = {
 export const perplexity: Provider = {
   id: 'perplexity',
   matchUrl: (url) => /perplexity\.ai/i.test(url),
+  editorSelectors: [`#${SELECTORS.editor}`, SELECTORS.editorTextbox],
+  sendButtonSelectors: SELECTORS.sendButton,
+  useNativeEnterToSend: true,
+  focusBeforeSend: true,
 
   buildInjectScript(prompt: string): string {
     return loadScript('perplexity', 'inject', {

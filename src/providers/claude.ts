@@ -31,6 +31,8 @@ const SELECTORS = {
 export const claude: Provider = {
     id: 'claude',
     matchUrl: (url) => /claude\.ai/i.test(url),
+    editorSelectors: [SELECTORS.editor],
+    sendButtonSelectors: SELECTORS.sendButton,
 
     buildInjectScript(prompt: string): string {
         return loadScript('claude', 'inject', {

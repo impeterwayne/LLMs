@@ -44,14 +44,17 @@ const SELECTORS = {
 export const gemini: Provider = {
     id: 'gemini',
     matchUrl: (url) => /gemini\.google\.com/i.test(url),
-    focusBeforeInject: true,
+    // focusBeforeInject removed — inject script handles focus internally
+    // with document.hasFocus() check + DOM fallback for parallel execution
     focusBeforeSend: true,
+    editorSelectors: SELECTORS.editor,
+    sendButtonSelectors: SELECTORS.sendButton,
 
     buildInjectScript(prompt: string): string {
         return loadScript('gemini', 'inject', {
             '__SELECTORS__': JSON.stringify(SELECTORS.editor),
             '__PROMPT__': JSON.stringify(prompt),
-        }, JS_FIND_FIRST, JS_EXEC_COMMAND_INSERT);
+        }, JS_FIND_FIRST);
     },
 
     buildSendScript(): string {

@@ -17,6 +17,8 @@ const SELECTORS = {
 export const deepseek: Provider = {
     id: 'deepseek',
     matchUrl: (url) => /deepseek\.com/i.test(url),
+    editorSelectors: [SELECTORS.editor],
+    sendButtonSelectors: [],  // DeepSeek uses Enter key, not a button
 
     buildInjectScript(prompt: string): string {
         return loadScript('deepseek', 'inject', {

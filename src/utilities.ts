@@ -2,7 +2,15 @@ import { BrowserWindow, WebPreferences, WebContentsView } from "electron"; // Ad
 import { applyCustomStyles } from "./customStyles.js";
 import { DEVTOOLS_AUTO_OPEN } from "./config.js";
 import { getProvider } from "./providers/registry.js";
+import type { Provider } from "./providers/types.js";
 import { loadScript } from "./providers/shared.js";
+import {
+  pipelineInject,
+  pipelineSend,
+  pipelineInjectAndSend,
+  type PipelineResult,
+  type PipelineOptions,
+} from "./commandPipeline.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -255,6 +263,175 @@ export function sendPromptInView(view: CustomBrowserView) {
   view.webContents.executeJavaScript(provider.buildSendScript()).catch((err: Error) => {
     console.warn(`[${provider.id}] Send script error:`, err.message);
   });
+}
+
+// ─── Pipeline-aware versions ─────────────────────────────────────
+
+/**
+ * Pipeline-aware inject: waits for page readiness before injecting.
+ * Returns a promise with success/failure status.
+ */
+export async function pipelineInjectPromptIntoView(
+  view: CustomBrowserView,
+  prompt: string,
+): Promise<PipelineResult> {
+  const provider = getProvider(view.id);
+  if (!provider) {
+    console.warn(`[LLM-God] No provider found for: ${view.id}`);
+    return {
+      viewId: view.id || "unknown",
+      success: false,
+      stage: "inject",
+      error: `No provider for ${view.id}`,
+    };
+  }
+
+  if (provider.focusBeforeInject) {
+    // Don't focus here — pass it to pipeline for just-in-time focus
+    // This prevents other views from stealing focus during async wait
+  }
+
+  const script = provider.buildInjectScript(prompt);
+  return pipelineInject(view, script, {
+    editorSelectors: provider.editorSelectors ?? [],
+    focusFn: provider.focusBeforeInject ? () => view.webContents.focus() : undefined,
+  });
+}
+
+/**
+ * Send via Electron's native sendInputEvent — produces trusted Enter key events.
+ * Used for providers like Perplexity that reject synthetic DOM events (isTrusted=false).
+ */
+async function sendViaNativeEnter(
+  view: CustomBrowserView,
+  provider: Provider,
+): Promise<PipelineResult> {
+  const viewId = view.id || "unknown";
+  try {
+    // First, focus the editor element inside the page via JS
+    // This is critical — webContents.focus() only focuses the Electron view,
+    // not the actual contenteditable/textarea the Enter key needs to target.
+    const editorSelectors = provider.editorSelectors ?? [];
+    if (editorSelectors.length > 0) {
+      const focusScript = `
+        (function() {
+          var selectors = ${JSON.stringify(editorSelectors)};
+          for (var i = 0; i < selectors.length; i++) {
+            var el = document.querySelector(selectors[i]);
+            if (el) { el.focus(); return true; }
+          }
+          return false;
+        })();
+      `;
+      await view.webContents.executeJavaScript(focusScript);
+    }
+
+    // Also focus at the Electron level
+    view.webContents.focus();
+
+    // Brief delay to ensure focus is settled
+    await new Promise((r) => setTimeout(r, 150));
+
+    // Send trusted Enter key via Electron's native API
+    view.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' } as any);
+    view.webContents.sendInputEvent({ type: 'char', keyCode: 'Return' } as any);
+    view.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' } as any);
+
+    console.log(`[Pipeline][${viewId}] Sent native Enter key`);
+    return { viewId, success: true, stage: "send" };
+  } catch (err: any) {
+    console.error(`[Pipeline][${viewId}] Native Enter failed:`, err.message);
+    return { viewId, success: false, stage: "send", error: err.message };
+  }
+}
+
+/**
+ * Pipeline-aware send: waits for page readiness before clicking send.
+ * Returns a promise with success/failure status.
+ */
+export async function pipelineSendPromptInView(
+  view: CustomBrowserView,
+): Promise<PipelineResult> {
+  const provider = getProvider(view.id);
+  if (!provider) {
+    console.warn(`[LLM-God] No provider found for: ${view.id}`);
+    return {
+      viewId: view.id || "unknown",
+      success: false,
+      stage: "send",
+      error: `No provider for ${view.id}`,
+    };
+  }
+
+  // Native Enter key send — uses Electron's sendInputEvent for trusted events
+  if (provider.useNativeEnterToSend) {
+    return sendViaNativeEnter(view, provider);
+  }
+
+  if (provider.focusBeforeSend) {
+    // Don't focus here — pass it to pipeline for just-in-time focus
+  }
+
+  const script = provider.buildSendScript();
+  return pipelineSend(view, script, {
+    sendButtonSelectors: provider.sendButtonSelectors ?? [],
+    focusFn: provider.focusBeforeSend ? () => view.webContents.focus() : undefined,
+  });
+}
+
+/**
+ * Pipeline-aware inject + send for all views.
+ * Waits for page readiness, injects prompt, waits for UI to react,
+ * then sends. All views run in parallel.
+ */
+export async function pipelineInjectAndSendAllViews(
+  views: CustomBrowserView[],
+  prompt: string,
+  opts: PipelineOptions = {},
+): Promise<PipelineResult[]> {
+  return Promise.all(
+    views.map(async (view) => {
+      const provider = getProvider(view.id);
+      if (!provider) {
+        return {
+          viewId: view.id || "unknown",
+          success: false,
+          stage: "inject" as const,
+          error: `No provider for ${view.id}`,
+        };
+      }
+
+      if (provider.focusBeforeInject) {
+        // Don't focus here — pipeline will do just-in-time focus
+      }
+
+      const injectScript = provider.buildInjectScript(prompt);
+
+      // Inject first
+      const injectResult = await pipelineInject(view, injectScript, {
+        editorSelectors: provider.editorSelectors ?? [],
+        focusFn: provider.focusBeforeInject ? () => view.webContents.focus() : undefined,
+        ...opts,
+      });
+      if (!injectResult.success) return injectResult;
+
+      // Brief delay for UI to react
+      await new Promise((r) => setTimeout(r, opts.injectToSendDelay ?? 300));
+
+      // Native Enter key send for providers that need trusted events
+      if (provider.useNativeEnterToSend) {
+        return sendViaNativeEnter(view, provider);
+      }
+
+      // Standard JS send script
+      const sendScript = provider.buildSendScript();
+      return pipelineSend(view, sendScript, {
+        sendButtonSelectors: provider.sendButtonSelectors ?? [],
+        focusFn: provider.focusBeforeSend ? () => view.webContents.focus() : undefined,
+        ...opts,
+      });
+    }),
+  );
 }
 
 /**

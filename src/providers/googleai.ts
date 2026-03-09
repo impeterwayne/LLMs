@@ -26,6 +26,8 @@ export const googleai: Provider = {
   matchUrl: (url) => /google\.com/i.test(url) && !/gemini\.google\.com/i.test(url),
   focusBeforeInject: true,
   focusBeforeSend: true,
+  editorSelectors: SELECTORS.editor,
+  sendButtonSelectors: SELECTORS.sendButton,
 
   buildInjectScript(prompt: string): string {
     return loadScript('googleai', 'inject', {
