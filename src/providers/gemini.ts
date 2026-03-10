@@ -20,13 +20,10 @@ const SELECTORS = {
         'button.send-button',
         'button[data-test-id="send-button"]',
     ],
-    moreMenuButton: [
-        'button[data-test-id="more-menu-button"]',
-        'button[aria-label="Show more options"]',
-        'button:has(mat-icon[fonticon="more_vert"])',
-    ],
-    copyResponseButton: [
-        'button[data-test-id="copy-response-button"]',
+    copyButton: [
+        'copy-button button',
+        'button[data-test-id="copy-button"]',
+        'button[aria-label="Copy"]',
     ],
     // Paste targets for file upload
     pasteTargets: [
@@ -100,8 +97,7 @@ export const gemini: Provider = {
 
     buildCopyScript(): string {
         return loadScript('gemini', 'copy', {
-            '__MORE_MENU_SELECTORS__': JSON.stringify(SELECTORS.moreMenuButton),
-            '__COPY_SELECTORS__': JSON.stringify(SELECTORS.copyResponseButton),
-        }, JS_FIND_FIRST);
+            '__COPY_SELECTORS__': JSON.stringify(SELECTORS.copyButton),
+        });
     },
 };

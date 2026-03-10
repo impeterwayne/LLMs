@@ -1,4 +1,4 @@
-import { BrowserWindow, WebPreferences, WebContentsView } from "electron"; // Added WebPreferences type
+import { BrowserWindow, WebPreferences, WebContentsView, shell } from "electron";
 import { applyCustomStyles } from "./customStyles.js";
 import { DEVTOOLS_AUTO_OPEN } from "./config.js";
 import { getProvider } from "./providers/registry.js";
@@ -172,6 +172,15 @@ export function addBrowserView(
 
   view.webContents.setZoomFactor(1.5);
   applyCustomStyles(view.webContents);
+
+  // Open clicked links in the system default browser instead of in-app
+  view.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+    if (targetUrl && /^https?:\/\//i.test(targetUrl)) {
+      shell.openExternal(targetUrl);
+    }
+    return { action: 'deny' };
+  });
+
   view.webContents.loadURL(url);
 
   ensureDetachedDevTools(view);

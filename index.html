@@ -95,65 +95,7 @@
       }
     }
 
-    /* ── Provider Toggles ── */
-    .provider-toggle {
-      flex: 1;
-      min-height: 36px;
-      font-size: 13px;
-      font-weight: 500;
-      padding: 6px 8px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s, background 0.15s;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    }
 
-    .provider-toggle.active {
-      color: var(--text-primary);
-      border-color: var(--accent);
-      background: var(--accent-dim);
-    }
-
-    .provider-toggle:hover {
-      color: var(--text-secondary);
-      border-color: var(--text-muted);
-    }
-
-    .provider-toggle.active:hover {
-      color: var(--text-primary);
-      border-color: var(--accent);
-    }
-
-    /* Research provider accent */
-    .provider-toggle.provider-research.active {
-      border-color: #34a853;
-      background: rgba(52, 168, 83, 0.10);
-    }
-
-    .provider-toggle.provider-research:hover {
-      border-color: rgba(52, 168, 83, 0.5);
-    }
-
-    .provider-toggle svg {
-      width: 14px;
-      height: 14px;
-      flex-shrink: 0;
-    }
-
-    /* Provider divider */
-    .provider-divider {
-      width: 1px;
-      height: 24px;
-      background: var(--border);
-      margin: 0 4px;
-      align-self: center;
-    }
 
     /* ── Prompt Area ── */
     #prompt-area {
@@ -288,14 +230,6 @@
 
     .show {
       display: block;
-    }
-
-    /* ── Chat Header ── */
-    .chat-header {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      margin-bottom: 4px;
     }
 
     /* ── Chat Input Row ── */
@@ -1313,30 +1247,7 @@
   <div id="view-headers-container"></div>
   <div id="stack-tab-bar"></div>
   <div id="prompt-area">
-    <div class="chat-header">
-      <button class="provider-toggle" data-provider="chatgpt">ChatGPT</button>
-      <button class="provider-toggle" data-provider="gemini">Gemini</button>
-      <button class="provider-toggle" data-provider="perplexity">Perplexity</button>
-      <button class="provider-toggle" data-provider="claude">Claude</button>
-      <button class="provider-toggle" data-provider="grok">Grok</button>
-      <button class="provider-toggle" data-provider="deepseek">DeepSeek</button>
-      <span class="provider-divider"></span>
-      <button class="provider-toggle provider-research" data-provider="googleai">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
-        Google
-      </button>
-      <button class="provider-toggle provider-research" data-provider="reddit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-        Reddit
-      </button>
-    </div>
+
     <div class="chat-input-row">
       <textarea id="prompt-input" rows="3" placeholder="Type your prompt here..."></textarea>
       <div class="chat-input-actions">
@@ -1381,14 +1292,8 @@
         </button>
       </div>
       <div class="settings-body">
-        <div class="settings-section">
-          <div class="settings-section-title">Custom Workspace</div>
-          <div class="settings-field">
-            <label class="settings-label" for="workspace-name">Workspace Name</label>
-            <input type="text" class="settings-input" id="workspace-name" placeholder="My Workspace" />
-          </div>
-        </div>
-        <div class="settings-section">
+        <!-- Layout section hidden – stack-only mode -->
+        <div class="settings-section" style="display:none">
           <div class="settings-section-title">Layout</div>
           <div class="settings-field">
             <div class="layout-mode-grid">
@@ -1444,40 +1349,7 @@
           </div>
         </div>
         <div class="settings-section">
-          <div class="settings-section-title">Display</div>
-          <div class="settings-field">
-            <div class="settings-toggle-row">
-              <div>
-                <div class="settings-toggle-label">Address Bar</div>
-                <div class="settings-toggle-desc">Show URL bar above each provider view</div>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="toggle-address-bar" checked />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="settings-toggle-row">
-              <div>
-                <div class="settings-toggle-label">Provider Bar</div>
-                <div class="settings-toggle-desc">Show provider toggles above the prompt</div>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="toggle-provider-bar" checked />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-        <div class="settings-section">
           <div class="settings-section-title">Default Providers</div>
-          <div class="settings-field">
-            <div class="workspace-presets">
-              <button class="workspace-preset-btn" data-preset="all">All</button>
-              <button class="workspace-preset-btn" data-preset="minimal">Minimal</button>
-              <button class="workspace-preset-btn" data-preset="research">Research</button>
-              <button class="workspace-preset-btn" data-preset="none">None</button>
-            </div>
-          </div>
           <div class="workspace-provider-grid" id="workspace-providers">
             <label class="workspace-provider-item">
               <input type="checkbox" data-provider="chatgpt" />
@@ -1513,7 +1385,6 @@
             </label>
           </div>
         </div>
-
       </div>
       <div class="settings-footer">
         <span class="settings-saved-indicator" id="settings-saved">✓ Saved</span>

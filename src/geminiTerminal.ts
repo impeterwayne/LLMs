@@ -22,9 +22,14 @@ export class GeminiProcessor {
 
     /**
      * Send a prompt to the Gemini CLI and stream the output.
+     * Optionally attach files via @file references in the CLI args.
      * Returns a promise that resolves when the process exits.
      */
-    async run(prompt: string, callbacks: GeminiProcessorCallbacks): Promise<void> {
+    async run(
+        prompt: string,
+        callbacks: GeminiProcessorCallbacks,
+        files?: string[]
+    ): Promise<void> {
         if (this.running) {
             callbacks.onError("[GeminiProcessor] Already processing a request\n");
             return;
@@ -37,12 +42,25 @@ export class GeminiProcessor {
             // On other platforms, use /bin/sh.
             const isWin = os.platform() === "win32";
             const shell = isWin ? "cmd.exe" : "/bin/sh";
-            const args = isWin ? ["/c", "gemini"] : ["-c", "gemini"];
+
+            // Build the gemini command with optional @file arguments
+            let geminiCmd = "gemini";
+            if (files && files.length > 0) {
+                // Append @file references so Gemini CLI reads them as context
+                const fileRefs = files.map(f => `@"${f.replace(/"/g, '\\"')}"`).join(" ");
+                geminiCmd = `gemini ${fileRefs}`;
+            }
+
+            const args = isWin ? ["/c", geminiCmd] : ["-c", geminiCmd];
 
             const proc = spawn(shell, args, {
-                cwd: process.cwd(),
+                // Run from temp dir to prevent Gemini CLI from reading project files
+                cwd: os.tmpdir(),
                 stdio: ["pipe", "pipe", "pipe"],
-                env: { ...process.env },
+                env: {
+                    ...process.env,
+                    GEMINI_CLI_MODE: "cli",
+                },
                 windowsHide: true,
             });
 

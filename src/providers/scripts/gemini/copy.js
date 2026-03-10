@@ -1,67 +1,72 @@
-/* Gemini — Copy full conversation via More menu → Copy for each turn */
+/* Gemini — Copy full conversation using direct copy buttons on each response */
 (async () => {
-    const moreSelectors = __MORE_MENU_SELECTORS__;
     const copySelectors = __COPY_SELECTORS__;
     const conversation = [];
 
     /* ── 1. Find all response containers ──────────────────────── */
-    /* Gemini uses model-response and user-query containers */
-    const allTurns = document.querySelectorAll('model-response, user-query, .conversation-container > div');
+    /* Gemini uses <model-response> and <user-query> custom elements
+       inside .conversation-container */
+    const allTurns = document.querySelectorAll(
+        'model-response, user-query, .conversation-container > div'
+    );
 
     if (allTurns.length > 0) {
         for (const turn of allTurns) {
             const tag = turn.tagName?.toLowerCase();
 
+            /* ── User turn ──────────────────────────────────── */
             if (tag === 'user-query' || turn.querySelector('user-query')) {
-                const userText = turn.innerText?.trim();
+                const queryEl = tag === 'user-query' ? turn : turn.querySelector('user-query');
+                const textEl = queryEl?.querySelector('.query-text') || queryEl;
+                const userText = textEl?.innerText?.trim();
                 if (userText) conversation.push('## User\n' + userText);
                 continue;
             }
 
+            /* ── Model turn ─────────────────────────────────── */
             if (tag === 'model-response' || turn.querySelector('model-response')) {
-                /* Try to click the More menu → Copy for this response */
                 let copied = null;
 
-                /* Find the more-menu button within this turn */
-                let moreBtn = null;
-                for (const sel of moreSelectors) {
-                    moreBtn = turn.querySelector(sel);
-                    if (moreBtn) break;
+                /* Find the direct copy button in the response footer.
+                   Gemini renders: <copy-button> → <button data-test-id="copy-button"> */
+                let copyBtn = null;
+                for (const sel of copySelectors) {
+                    copyBtn = turn.querySelector(sel);
+                    if (copyBtn) break;
                 }
 
-                if (moreBtn) {
-                    moreBtn.click();
-                    await new Promise(r => setTimeout(r, 500));
-
-                    /* Find the Copy option in the menu */
-                    let copyBtn = __findFirst(copySelectors);
-                    if (!copyBtn) {
-                        const allButtons = document.querySelectorAll('button');
-                        for (const btn of allButtons) {
-                            const label = btn.querySelector('.item-label');
-                            if (label && label.textContent && label.textContent.trim().toLowerCase() === 'copy') {
-                                copyBtn = btn; break;
-                            }
+                /* Broader fallback: look within the closest response-container */
+                if (!copyBtn) {
+                    const responseContainer = turn.closest('.conversation-container') || turn;
+                    const footer = responseContainer.querySelector('.response-container-footer') ||
+                        responseContainer.querySelector('message-actions');
+                    if (footer) {
+                        for (const sel of copySelectors) {
+                            copyBtn = footer.querySelector(sel);
+                            if (copyBtn) break;
                         }
                     }
-
-                    if (copyBtn) {
-                        await navigator.clipboard.writeText('');
-                        copyBtn.click();
-                        await new Promise(r => setTimeout(r, 300));
-                        document.body.click(); /* dismiss menu */
-                        try {
-                            const text = await navigator.clipboard.readText();
-                            if (text && text.trim().length > 0) copied = text.trim();
-                        } catch (e) { /* fall through */ }
-                    } else {
-                        document.body.click(); /* dismiss menu */
-                    }
                 }
 
-                /* Fallback: extract innerText from the response content */
+                if (copyBtn) {
+                    /* Clear clipboard, click copy, wait, then read */
+                    await navigator.clipboard.writeText('');
+                    copyBtn.click();
+                    await new Promise(r => setTimeout(r, 400));
+                    try {
+                        const text = await navigator.clipboard.readText();
+                        if (text && text.trim().length > 0) copied = text.trim();
+                    } catch (e) { /* clipboard read failed, fall through */ }
+                }
+
+                /* Fallback: extract content from the markdown container */
                 if (!copied) {
-                    const content = turn.querySelector('.response-content') || turn.querySelector('.model-response-text') || turn;
+                    const content =
+                        turn.querySelector('.markdown.markdown-main-panel') ||
+                        turn.querySelector('.model-response-text') ||
+                        turn.querySelector('.response-content') ||
+                        turn.querySelector('message-content') ||
+                        turn;
                     const text = content.innerText?.trim();
                     if (text) copied = text;
                 }
@@ -72,45 +77,28 @@
         }
     }
 
-    /* ── 2. Fallback: iterate all More menu buttons ───────────── */
+    /* ── 2. Fallback: find all copy-button elements on the page ── */
     if (conversation.length === 0) {
-        let moreButtons = [];
-        for (const sel of moreSelectors) {
-            moreButtons = document.querySelectorAll(sel);
-            if (moreButtons.length > 0) break;
+        /* Gemini wraps copy buttons in <copy-button> custom elements */
+        let copyButtons = document.querySelectorAll('copy-button button');
+        if (copyButtons.length === 0) {
+            for (const sel of copySelectors) {
+                copyButtons = document.querySelectorAll(sel);
+                if (copyButtons.length > 0) break;
+            }
         }
 
-        for (let i = 0; i < moreButtons.length; i++) {
-            moreButtons[i].click();
-            await new Promise(r => setTimeout(r, 500));
-
-            let copyBtn = __findFirst(copySelectors);
-            if (!copyBtn) {
-                const allButtons = document.querySelectorAll('button');
-                for (const btn of allButtons) {
-                    const label = btn.querySelector('.item-label');
-                    if (label && label.textContent && label.textContent.trim().toLowerCase() === 'copy') {
-                        copyBtn = btn; break;
-                    }
+        for (let i = 0; i < copyButtons.length; i++) {
+            await navigator.clipboard.writeText('');
+            copyButtons[i].click();
+            await new Promise(r => setTimeout(r, 400));
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text && text.trim().length > 0) {
+                    conversation.push(`## Response ${i + 1}\n${text.trim()}`);
                 }
-            }
-
-            if (copyBtn) {
-                await navigator.clipboard.writeText('');
-                copyBtn.click();
-                await new Promise(r => setTimeout(r, 300));
-                document.body.click();
-                try {
-                    const text = await navigator.clipboard.readText();
-                    if (text && text.trim().length > 0) {
-                        conversation.push(`## Response ${i + 1}\n${text.trim()}`);
-                    }
-                } catch (e) { /* skip */ }
-            } else {
-                document.body.click();
-            }
-
-            await new Promise(r => setTimeout(r, 200)); /* pause between turns */
+            } catch (e) { /* skip */ }
+            await new Promise(r => setTimeout(r, 150));
         }
     }
 

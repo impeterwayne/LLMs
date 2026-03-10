@@ -18,6 +18,14 @@ const SELECTORS = {
     'button[aria-label="Gửi"]',     // Vietnamese
     'button.OEueve',                 // class-based (fragile)
   ],
+  // Copy button in AI Mode action bar (locale variants)
+  copyButton: [
+    'button[aria-label*="Copy"]',
+    'button[aria-label*="copy"]',
+    'button[aria-label*="Sao ch"]',  // Vietnamese "Sao chép"
+    'button[aria-label*="Copiar"]',  // Spanish/Portuguese
+    'button.bKxaof',                 // class-based (fragile)
+  ],
 };
 
 export const googleai: Provider = {
@@ -41,5 +49,11 @@ export const googleai: Provider = {
       '__SEND_SELECTORS_JOIN__': JSON.stringify(SELECTORS.sendButton.join(', ')),
       '__EDITOR_SELECTORS__': JSON.stringify(SELECTORS.editor),
     }, JS_FIND_FIRST, JS_SIMULATE_ENTER);
+  },
+
+  buildCopyScript(): string {
+    return loadScript('googleai', 'copy', {
+      '__COPY_SELECTORS__': JSON.stringify(SELECTORS.copyButton),
+    }, JS_FIND_FIRST);
   },
 };

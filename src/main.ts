@@ -11,6 +11,7 @@ import {
   globalShortcut,
   Menu,
   nativeImage,
+  shell,
 } from "electron";
 import { exec } from "child_process";
 import util from "util";
@@ -82,12 +83,7 @@ function scheduleSaveActiveLayoutSnapshot(reason?: string, delayMs = 800): void 
 const HEADER_HEIGHT_DEFAULT = 44; // Height for URL bar headers
 
 function getHeaderHeight(): number {
-  try {
-    const settings = getAppSettings();
-    return settings.showAddressBar === false ? 0 : HEADER_HEIGHT_DEFAULT;
-  } catch {
-    return HEADER_HEIGHT_DEFAULT;
-  }
+  return 0; // Address bar permanently removed
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -614,9 +610,6 @@ function restoreLastActiveSessionAtStartup(): void {
     // Inform renderer of active selection and visibility settings
     mainWindow.webContents.once("did-finish-load", () => {
       mainWindow.webContents.send("sessions:active-changed", { id });
-      const settings = getAppSettings();
-      mainWindow.webContents.send("ui:toggle-address-bar", settings.showAddressBar !== false);
-      mainWindow.webContents.send("ui:toggle-provider-bar", settings.showProviderBar !== false);
     });
   } catch (err) {
     console.warn("Failed to restore last active session on startup", err);
@@ -1081,10 +1074,17 @@ ipcMain.handle("copy-all-answers", async () => {
 
 // ── Synthesis: Gemini CLI as Processor ──────────────────────────────────
 
-const SYNTHESIS_PROMPT_PREFIX =
-  `Synthesize the following AI responses into one comprehensive answer. ` +
-  `Merge complementary info, resolve contradictions, keep Markdown formatting, ` +
-  `and note unique contributions where relevant. Be concise but thorough.\n\n`;
+const SYNTHESIS_PROMPT =
+  `You are synthesizing answers from multiple AI providers into one comprehensive response.\n` +
+  `Each provider's answer is attached as a separate file.\n\n` +
+  `Instructions:\n` +
+  `- Merge complementary information from all sources\n` +
+  `- Resolve contradictions by noting differences\n` +
+  `- PRESERVE all citation URLs and source links — include them inline or as references\n` +
+  `- PRESERVE all image URLs — include them as markdown images\n` +
+  `- Keep Markdown formatting\n` +
+  `- Note unique contributions from each source when relevant\n` +
+  `- Be concise but thorough\n`;
 
 /**
  * Open (or focus) the Gemini CLI synthesis window.
@@ -1153,8 +1153,8 @@ async function waitForSynthWindowReady(): Promise<void> {
 }
 
 /**
- * Collect answers from all views, build a synthesis prompt,
- * then run it through the Gemini CLI and show results.
+ * Collect answers from all views using the proven copy-button approach,
+ * save each as a temp .md file, then run Gemini CLI with file references.
  */
 async function synthesizeViaGeminiCLI(): Promise<void> {
   if (geminiProcessor.isRunning) {
@@ -1164,20 +1164,20 @@ async function synthesizeViaGeminiCLI(): Promise<void> {
 
   mainWindow.webContents.send('synthesis:start');
 
-  // Copy answers from all views first (they need focus for clipboard access)
+  const tempDir = app.getPath('temp');
+  const tempFiles: { provider: string; filePath: string }[] = [];
+
+  // Copy answers from all views using the existing copy-button scripts
   const targetViews = views.filter((v) => {
     const p = getProvider(v.id);
     return p?.buildCopyScript != null;
   });
 
-  const parts: string[] = [];
-
   for (const view of targetViews) {
     try {
       const p = getProvider(view.id);
-      const provider = p?.id
-        ? p.id.charAt(0).toUpperCase() + p.id.slice(1)
-        : 'Unknown';
+      const providerId = p?.id || 'unknown';
+      const providerName = providerId.charAt(0).toUpperCase() + providerId.slice(1);
 
       clipboard.writeText('');
       view.webContents.focus();
@@ -1194,14 +1194,22 @@ async function synthesizeViaGeminiCLI(): Promise<void> {
       }
 
       if (copiedText && copiedText.trim().length > 0) {
-        parts.push(`## ${provider}\n${copiedText.trim()}`);
+        // Save to temp file
+        const fileName = `llm-god-synth-${providerId}-${Date.now()}.md`;
+        const filePath = path.join(tempDir, fileName);
+        const fileContent = `# ${providerName} Response\n\n${copiedText.trim()}`;
+        fs.writeFileSync(filePath, fileContent, 'utf8');
+        tempFiles.push({ provider: providerName, filePath });
+        console.log(`[Synthesis] ✓ ${providerName}: ${copiedText.length} chars → ${fileName}`);
+      } else {
+        console.log(`[Synthesis] ✗ ${providerName}: no content`);
       }
     } catch (err) {
       console.error('[Synthesis] Failed to copy from view:', view.id, err);
     }
   }
 
-  if (parts.length === 0) {
+  if (tempFiles.length === 0) {
     console.warn('[Synthesis] No answers found to synthesize');
     mainWindow.webContents.send('synthesis:done', { error: 'No answers found' });
     return;
@@ -1209,27 +1217,27 @@ async function synthesizeViaGeminiCLI(): Promise<void> {
 
   // NOW open the window (after copying is done so we don't steal focus)
   openGeminiTerminalWindow();
-  // Wait for the renderer to signal it has set up IPC listeners
   await waitForSynthWindowReady();
 
-  const prompt = SYNTHESIS_PROMPT_PREFIX + parts.join('\n\n---\n\n');
   const timestamp = new Date().toLocaleTimeString();
-  console.log(`[Synthesis] Sending ${parts.length} answers to Gemini CLI`);
+  console.log(`[Synthesis] Sending ${tempFiles.length} files to Gemini CLI`);
 
   // Notify the synthesis window that a new entry is starting
   if (geminiTerminalWindow && !geminiTerminalWindow.isDestroyed()) {
     geminiTerminalWindow.webContents.send('synthesis:entry-start', {
-      providerCount: parts.length,
+      providerCount: tempFiles.length,
       timestamp,
     });
   }
 
-  // Run through Gemini CLI
-  await geminiProcessor.run(prompt, {
+  // Build file references for Gemini CLI
+  const fileArgs = tempFiles.map(f => f.filePath);
+
+  // Run through Gemini CLI with file arguments
+  await geminiProcessor.run(SYNTHESIS_PROMPT, {
     onOutput: (text) => {
       if (geminiTerminalWindow && !geminiTerminalWindow.isDestroyed()) {
         geminiTerminalWindow.webContents.send('synthesis:output', text);
-        // Focus on first output chunk
         if (!geminiTerminalWindow.isFocused()) {
           geminiTerminalWindow.focus();
         }
@@ -1244,8 +1252,12 @@ async function synthesizeViaGeminiCLI(): Promise<void> {
       if (geminiTerminalWindow && !geminiTerminalWindow.isDestroyed()) {
         geminiTerminalWindow.webContents.send('synthesis:entry-done', { code });
       }
+      // Clean up temp files
+      for (const { filePath } of tempFiles) {
+        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+      }
     },
-  });
+  }, fileArgs);
 
   mainWindow.webContents.send('synthesis:done');
 }
@@ -1623,10 +1635,6 @@ ipcMain.on("settings:apply-workspace", (_evt, settings: WorkspaceSettings) => {
 
   // Notify renderer so the provider toggle bar updates immediately
   mainWindow?.webContents.send("workspace:views-changed");
-
-  // Send visibility toggles
-  mainWindow?.webContents.send("ui:toggle-address-bar", settings.showAddressBar !== false);
-  mainWindow?.webContents.send("ui:toggle-provider-bar", settings.showProviderBar !== false);
 });
 
 // ----- Stack Mode Navigation -----
@@ -1649,6 +1657,47 @@ ipcMain.on("stack:go-to", (_evt, index: number) => {
   stackActiveIndex = Math.min(Math.max(0, index), views.length - 1);
   void adjustBrowserViewBounds();
   mainWindow?.webContents.send("stack:active-changed", stackActiveIndex);
+});
+
+// Right-click context menu on stack tabs — provides URL access (replaces address bar)
+ipcMain.on("stack-tab:context-menu", (_evt, payload: { index: number }) => {
+  const { index } = payload;
+  if (index < 0 || index >= views.length) return;
+
+  const view = views[index];
+  const url = view.webContents.isDestroyed() ? (view.id || '') : (view.webContents.getURL() || view.id || '');
+  const provider = inferProviderFromUrl(url);
+  const providerName = provider.charAt(0).toUpperCase() + provider.slice(1);
+
+  const menuItems: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: `${providerName} — ${url.length > 80 ? url.slice(0, 77) + '…' : url}`,
+      enabled: false,
+    },
+    { type: 'separator' },
+    {
+      label: 'Copy URL',
+      click: () => {
+        clipboard.writeText(url);
+      },
+    },
+    {
+      label: 'Open in Browser',
+      click: () => {
+        shell.openExternal(url);
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Reload',
+      click: () => {
+        if (!view.webContents.isDestroyed()) view.webContents.reload();
+      },
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(menuItems);
+  menu.popup();
 });
 
 /**

@@ -210,86 +210,6 @@ const textArea = document.getElementById(
 ) as HTMLTextAreaElement | null;
 
 
-// Provider toggle functionality
-const providerToggles = document.querySelectorAll<HTMLButtonElement>('.provider-toggle');
-
-const updateProviderToggles = async (): Promise<void> => {
-  try {
-    const urls = ((await ipcRenderer.invoke("get-current-urls")) ?? []) as string[];
-    const activeProviders = urls.map(url => inferProviderFromUrl(url));
-
-    providerToggles.forEach(toggle => {
-      const provider = toggle.dataset.provider;
-      if (provider && activeProviders.includes(provider)) {
-        toggle.classList.add('active');
-      } else {
-        toggle.classList.remove('active');
-      }
-    });
-  } catch (error) {
-    console.error("Failed to update provider toggles", error);
-  }
-};
-
-const inferProviderFromUrl = (url: string): string => {
-  try {
-    const u = new URL(url);
-    const host = u.hostname;
-    if (/chatgpt\.com|chat\.openai\.com/i.test(host)) return "chatgpt";
-    if (/gemini\.google\.com/i.test(host)) return "gemini";
-    if (/perplexity\.ai/i.test(host)) return "perplexity";
-    if (/claude\.ai/i.test(host)) return "claude";
-    if (/grok\.com/i.test(host)) return "grok";
-    if (/deepseek\.com/i.test(host)) return "deepseek";
-    // Research providers
-    if (/google\.com/i.test(host) && !/gemini\.google\.com/i.test(host)) return "googleai";
-    if (/reddit\.com/i.test(host)) return "reddit";
-    return host;
-  } catch {
-    return url;
-  }
-};
-
-providerToggles.forEach(toggle => {
-  toggle.addEventListener('click', async () => {
-    const provider = toggle.dataset.provider;
-    if (!provider) return;
-
-    try {
-      const urls = ((await ipcRenderer.invoke("get-current-urls")) ?? []) as string[];
-      const activeProviders = urls.map(url => inferProviderFromUrl(url));
-      const isActive = activeProviders.includes(provider);
-
-      if (isActive) {
-        // Close provider
-        ipcRenderer.send(`close-${provider}`, `close ${provider} now`);
-      } else {
-        // Open provider
-        ipcRenderer.send(`open-${provider}`, `open ${provider} now`);
-      }
-
-      // Update toggles after a short delay to allow IPC to process
-      setTimeout(updateProviderToggles, 100);
-    } catch (error) {
-      console.error(`Failed to toggle ${provider}`, error);
-    }
-  });
-});
-
-// Initial update
-updateProviderToggles();
-
-// Re-sync the toggle bar whenever workspace changes are applied
-ipcRenderer.on("workspace:views-changed", () => {
-  // Small delay so the main-process view list has settled
-  setTimeout(updateProviderToggles, 150);
-});
-
-// Also refresh when settings are saved (covers opening settings on another window, etc.)
-ipcRenderer.on("settings:updated", () => {
-  setTimeout(updateProviderToggles, 150);
-});
-
 const sendButton = document.getElementById("send-prompt-btn") as HTMLButtonElement | null;
 
 const sendPrompt = (): void => {
@@ -533,6 +453,12 @@ function buildStackTabs(layouts: ViewLayout[], activeIndex: number) {
 
     tab.addEventListener('click', () => {
       ipcRenderer.send('stack:go-to', index);
+    });
+
+    // Right-click context menu on tab — provides the URL options (replaces address bar)
+    tab.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      ipcRenderer.send('stack-tab:context-menu', { index });
     });
 
     stackTabBar!.appendChild(tab);

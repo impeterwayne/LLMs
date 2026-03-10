@@ -1,0 +1,41 @@
+[09:09:02.734] === START inject+send for 6 views, prompt length: 14926 ===
+[09:09:02.734] [chatgpt] START view.id="https://chatgpt.com/" url="https://chatgpt.com/c/69afdaa4-8b38-839c-9bc8-a4a0ef46c5c5" loading=true
+[09:09:02.736] [chatgpt] pipelineInject...
+[09:09:02.736] [gemini] START view.id="https://gemini.google.com/" url="https://gemini.google.com/app/f2fb56a8675f07b9" loading=true
+[09:09:02.737] [gemini] pipelineInject...
+[09:09:02.737] [perplexity] START view.id="https://www.perplexity.ai/" url="https://www.perplexity.ai/search/fatal-exception-android-app-re-D2JlTVzGTha254T70mBesQ" loading=true
+[09:09:02.737] [perplexity] pipelineInject...
+[09:09:02.737] [claude] START view.id="https://claude.ai/chats/" url="https://claude.ai/chat/f1a64d01-103f-4d87-a356-6729ab392d00" loading=true
+[09:09:02.738] [claude] pipelineInject...
+[09:09:02.738] [grok] START view.id="https://grok.com/" url="https://grok.com/c/e4638d5c-91f9-4ec3-80d5-efbf2b6829c0?rid=9a58197d-6145-482e-8136-f345fc134753" loading=true
+[09:09:02.738] [grok] pipelineInject...
+[09:09:02.739] [googleai] START view.id="https://www.google.com/aimode" url="https://www.google.com/search?q=Fatal+Exception%3A+android.app.RemoteServiceException%24ForegroundServiceDidNotStartInTimeException%3A+Context.startForegroundService%28%29+did+not+then+call+Service.startForeground%28%29%3A+ServiceRecord%7B11fa231+u0+com.gbapp.emulator.tools.retro.app%2Fandroidx.work.impl.foreground.SystemForegroundService%7D%0A+++++++at+android.app.ActivityThread.generateForegroundServiceDidNotStartInTimeException%28ActivityThread.java%3A2230%29%0A+++++++at+android.app.ActivityThread.throwRemoteServiceException%28ActivityThread.java%3A2204%29%0A+++++++at+android.app.ActivityThread.-%24%24Nest%24mthrowRemoteServiceException%28%29%0A+++++++at+android.app.ActivityThread%24H.handleMessage%28ActivityThread.java%3A2480%29%0A+++++++at+android.os.Handler.dispatchMessage%28Handler.java%3A106%29%0A+++++++at+android.os.Looper.loopOnce%28Looper.java%3A223%29%0A+++++++at+android.os.Looper.loop%28Looper.java%3A324%29%0A+++++++at+android.app.ActivityThread.main%28ActivityThread.java%3A8547%29%0A+++++++at+java.lang.reflect.Method.invoke%28Method.java%29%0A+++++++at+com.android.internal.os.RuntimeInit%24MethodAndArgsCaller.run%28RuntimeInit.java%3A582%29%0A+++++++at+com.android.internal.os.ZygoteInit.main%28ZygoteInit.java%3A1061%29&udm=50&mstk=AUtExfCG0oo4ctHXfE2FD9ANdVC2PDGgIDWsbTwMY1XT9ivAMuu9WH93MffylPXWzH7Kctw6awEijXpBbY598xA2sg5o2cjxUEJ_m2HSiXI25fGhGtobfat2eRMaa-LWuBFziOzzzLyOpCwM0P6oETC6XoV9etb8oP6htvfz1W_oR1Ed0VgJrnBY3ev0kuDG3jWbFuvxXLDoc8liyISAg00o5MwnV-ZyAXh-JBzSdnJnG7s405mZs5ZVMmZWn8FDHeIIXfsASv1DAhQfd8oc-lg1VEk7auJZPsNDsMlihO8KhrkZhtIY0kuGr5InQ881pbWiZBwyMbjAkRooYmS6p8Kf9D9ZQ-mXakjk5A&csuir=1&mtid=pdqvaeLDOb7r1e8P48-bwQ0" loading=true
+[09:09:02.739] [googleai] pipelineInject...
+[09:09:03.837] [googleai] focusFn(inject)
+[09:09:04.381] [googleai] INJECT OK stage=inject
+[09:09:04.382] [googleai] delay 300ms...
+[09:09:04.691] [googleai] pipelineSend... url="https://www.google.com/search?udm=50&aep=11" loading=false
+[09:09:05.609] [googleai] focusFn(send)
+[09:09:05.637] [googleai] SEND OK stage=send
+[09:09:06.163] [perplexity] INJECT OK stage=inject
+[09:09:06.163] [perplexity] delay 300ms...
+[09:09:06.543] [gemini] focusFn(inject)
+[09:09:06.548] [gemini] INJECT OK stage=inject
+[09:09:06.548] [gemini] delay 300ms...
+[09:09:06.597] [perplexity] SEND OK (JS script)
+[09:09:06.849] [gemini] pipelineSend... url="https://gemini.google.com/app" loading=false
+[09:09:06.852] [gemini] focusFn(send)
+[09:09:06.853] [gemini] SEND OK stage=send
+[09:09:08.998] [grok] INJECT OK stage=inject
+[09:09:08.998] [grok] delay 300ms...
+[09:09:09.302] [grok] pipelineSend... url="https://grok.com/" loading=false
+[09:09:09.405] [chatgpt] INJECT OK stage=inject
+[09:09:09.405] [chatgpt] delay 300ms...
+[09:09:09.705] [chatgpt] pipelineSend... url="https://chatgpt.com/" loading=false
+[09:09:09.788] [grok] SEND OK stage=send
+[09:09:09.835] [chatgpt] SEND OK stage=send
+[09:09:11.435] [claude] INJECT OK stage=inject
+[09:09:11.435] [claude] delay 300ms...
+[09:09:11.742] [claude] pipelineSend... url="https://claude.ai/new" loading=false
+[09:09:11.777] [claude] SEND OK stage=send
+[09:09:11.777] === END results: https://chatgpt.com/=true, https://gemini.googl=true, https://www.perplexi=true, https://claude.ai/ch=true, https://grok.com/=true, https://www.google.c=true ===

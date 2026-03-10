@@ -63,21 +63,11 @@ function getSelectedLayout(): LayoutMode {
 }
 
 function syncToggleSwitches() {
-    const addrToggle = document.getElementById("toggle-address-bar") as HTMLInputElement | null;
-    const provToggle = document.getElementById("toggle-provider-bar") as HTMLInputElement | null;
-    if (addrToggle) addrToggle.checked = currentSettings.showAddressBar !== false;
-    if (provToggle) provToggle.checked = currentSettings.showProviderBar !== false;
+    // Address bar & provider bar toggles removed from UI — no-op
 }
 
 function applyVisibility() {
-    const headersContainer = document.getElementById("view-headers-container");
-    const chatHeader = document.querySelector(".chat-header") as HTMLElement | null;
-    if (headersContainer) {
-        headersContainer.style.display = currentSettings.showAddressBar === false ? "none" : "";
-    }
-    if (chatHeader) {
-        chatHeader.style.display = currentSettings.showProviderBar === false ? "none" : "";
-    }
+    // Address bar & provider bar permanently hidden — no-op
 }
 
 function setCheckedProviders(providers: string[]) {
@@ -220,8 +210,8 @@ export async function initSettings() {
             workspaceName: nameInput?.value.trim() || "",
             defaultProviders: getCheckedProviders(),
             layout: getSelectedLayout(),
-            showAddressBar: (document.getElementById("toggle-address-bar") as HTMLInputElement)?.checked ?? true,
-            showProviderBar: (document.getElementById("toggle-provider-bar") as HTMLInputElement)?.checked ?? true,
+            showAddressBar: false,
+            showProviderBar: false,
         };
         await saveSettings(next);
 
@@ -240,16 +230,6 @@ export async function initSettings() {
         currentSettings = settings;
     });
 
-    // Listen for visibility toggles from main process
-    ipcRenderer.on("ui:toggle-address-bar", (_event: any, visible: boolean) => {
-        currentSettings.showAddressBar = visible;
-        applyVisibility();
-    });
-
-    ipcRenderer.on("ui:toggle-provider-bar", (_event: any, visible: boolean) => {
-        currentSettings.showProviderBar = visible;
-        applyVisibility();
-    });
 
     // Apply initial visibility
     applyVisibility();
