@@ -29,7 +29,7 @@ const LAYOUT_MODES: LayoutMode[] = ['row', 'grid-auto', 'grid-2col', 'grid-2row'
 let currentSettings: WorkspaceSettings = {
     workspaceName: "",
     defaultProviders: ["chatgpt", "gemini", "perplexity"],
-    layout: "row",
+    layout: "stack",
     showAddressBar: false,
     showProviderBar: true,
 };
@@ -59,7 +59,7 @@ function syncLayoutButtons(activeLayout: LayoutMode) {
 
 function getSelectedLayout(): LayoutMode {
     const active = document.querySelector<HTMLButtonElement>(".layout-mode-btn.active");
-    return (active?.dataset.layout as LayoutMode) || currentSettings.layout || "row";
+    return (active?.dataset.layout as LayoutMode) || currentSettings.layout || "stack";
 }
 
 function syncToggleSwitches() {
@@ -128,7 +128,7 @@ function openSettings() {
     const nameInput = document.getElementById("workspace-name") as HTMLInputElement | null;
     if (nameInput) nameInput.value = currentSettings.workspaceName || "";
     setCheckedProviders(currentSettings.defaultProviders);
-    syncLayoutButtons(currentSettings.layout || "row");
+    syncLayoutButtons(currentSettings.layout || "stack");
     syncToggleSwitches();
 
     // Hide browser views so they don't paint over the modal
@@ -164,8 +164,11 @@ export async function initSettings() {
     const saveBtn = document.getElementById("settings-save");
     const overlay = getOverlay();
 
-    const openHandler = () => openSettings();
+    const openHandler = () => {
+        openSettings();
+    };
     settingsBtn?.addEventListener("click", openHandler);
+
 
     closeBtn?.addEventListener("click", closeSettings);
     cancelBtn?.addEventListener("click", closeSettings);
@@ -222,6 +225,7 @@ export async function initSettings() {
         };
         await saveSettings(next);
 
+
         // Apply workspace immediately
         ipcRenderer.send("settings:apply-workspace", next);
 
@@ -250,3 +254,4 @@ export async function initSettings() {
     // Apply initial visibility
     applyVisibility();
 }
+

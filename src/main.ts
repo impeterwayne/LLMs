@@ -33,6 +33,7 @@ import {
 import type { SerializedFile } from "./utilities.js";
 import { getProvider } from "./providers/registry.js";
 import { applyCustomStyles } from "./customStyles.js";
+import { GeminiProcessor } from "./geminiTerminal.js";
 import { createRequire } from "node:module"; // Import createRequire
 import { fileURLToPath } from "node:url"; // Import fileURLToPath
 import Store from "electron-store"; // Import electron-store
@@ -40,6 +41,10 @@ import Store from "electron-store"; // Import electron-store
 const require = createRequire(import.meta.url);
 
 const sessionStore = new Store({ name: "sessions" }); // Separate store for sessions
+
+// ── Gemini CLI Processor ──────────────────────────────────────────────
+const geminiProcessor = new GeminiProcessor();
+let geminiTerminalWindow: BrowserWindow | null = null;
 
 interface CustomBrowserView extends WebContentsView {
   id: string; // Make id optional as it's assigned after creation
@@ -701,10 +706,12 @@ function updateZoomFactor(): void {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   nativeTheme.themeSource = "dark";
   createWindow();
   restoreLastActiveSessionAtStartup();
+
+
 
   electronLocalShortcut.register(mainWindow, "Ctrl+W", () => {
     app.quit();
@@ -811,6 +818,12 @@ app.whenReady().then(() => {
         executeSendPipeline(text);
       }
     }, 150);
+  });
+
+  // Ctrl+S: Synthesize — copy all answers and send to Gemini CLI
+  electronLocalShortcut.register(mainWindow, "Ctrl+S", () => {
+    console.log('[Synthesis] Ctrl+S pressed — synthesizing via Gemini CLI');
+    synthesizeViaGeminiCLI();
   });
 });
 
@@ -1063,7 +1076,183 @@ ipcMain.handle("copy-all-answers", async () => {
     .join("\n\n" + "=".repeat(50) + "\n\n");
 
   clipboard.writeText(combined);
-  return { success: true, count: results.length };
+  return { success: true, count: results.length, answers: Object.fromEntries(results.map(r => [r.provider, r.text])) };
+});
+
+// ── Synthesis: Gemini CLI as Processor ──────────────────────────────────
+
+const SYNTHESIS_PROMPT_PREFIX =
+  `Synthesize the following AI responses into one comprehensive answer. ` +
+  `Merge complementary info, resolve contradictions, keep Markdown formatting, ` +
+  `and note unique contributions where relevant. Be concise but thorough.\n\n`;
+
+/**
+ * Open (or focus) the Gemini CLI synthesis window.
+ * The window persists across synthesis calls, showing a running log.
+ */
+function openGeminiTerminalWindow(): BrowserWindow {
+  if (geminiTerminalWindow && !geminiTerminalWindow.isDestroyed()) {
+    geminiTerminalWindow.focus();
+    return geminiTerminalWindow;
+  }
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
+  const winW = Math.round(screenW * 2 / 3);
+  const winH = Math.round(screenH * 2 / 3);
+
+  geminiTerminalWindow = new BrowserWindow({
+    show: false,
+    width: winW,
+    height: winH,
+    x: Math.round((screenW - winW) / 2),
+    y: Math.round((screenH - winH) / 2),
+    backgroundColor: '#0e0e10',
+    autoHideMenuBar: true,
+    title: 'Gemini CLI — Synthesis',
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+  geminiTerminalWindow.setMenuBarVisibility(false);
+  geminiTerminalWindow.removeMenu();
+  geminiTerminalWindow.loadFile(path.join(__dirname, '..', 'synthesis.html'));
+
+  geminiTerminalWindow.once('ready-to-show', () => {
+    geminiTerminalWindow!.show();
+  });
+
+  geminiTerminalWindow.on('closed', () => {
+    geminiTerminalWindow = null;
+    synthWindowReady = false;
+  });
+
+  return geminiTerminalWindow;
+}
+
+// Readiness flag — set when the renderer signals it's ready to receive events
+let synthWindowReady = false;
+ipcMain.on('synthesis-window:ready', () => {
+  console.log('[Synthesis] Window ready');
+  synthWindowReady = true;
+});
+
+async function waitForSynthWindowReady(): Promise<void> {
+  if (synthWindowReady) return;
+  // Wait up to 5s for the window to signal readiness
+  return new Promise<void>((resolve) => {
+    const check = () => {
+      if (synthWindowReady) { resolve(); return; }
+      setTimeout(check, 50);
+    };
+    check();
+    // Safety timeout
+    setTimeout(resolve, 5000);
+  });
+}
+
+/**
+ * Collect answers from all views, build a synthesis prompt,
+ * then run it through the Gemini CLI and show results.
+ */
+async function synthesizeViaGeminiCLI(): Promise<void> {
+  if (geminiProcessor.isRunning) {
+    console.warn('[Synthesis] Already processing');
+    return;
+  }
+
+  mainWindow.webContents.send('synthesis:start');
+
+  // Copy answers from all views first (they need focus for clipboard access)
+  const targetViews = views.filter((v) => {
+    const p = getProvider(v.id);
+    return p?.buildCopyScript != null;
+  });
+
+  const parts: string[] = [];
+
+  for (const view of targetViews) {
+    try {
+      const p = getProvider(view.id);
+      const provider = p?.id
+        ? p.id.charAt(0).toUpperCase() + p.id.slice(1)
+        : 'Unknown';
+
+      clipboard.writeText('');
+      view.webContents.focus();
+      await new Promise((r) => setTimeout(r, 100));
+
+      const result = await copyAnswerFromView(view);
+      let copiedText = '';
+
+      if (result && result !== '__COPIED__') {
+        copiedText = result;
+      } else if (result === '__COPIED__') {
+        await new Promise((r) => setTimeout(r, 300));
+        copiedText = clipboard.readText();
+      }
+
+      if (copiedText && copiedText.trim().length > 0) {
+        parts.push(`## ${provider}\n${copiedText.trim()}`);
+      }
+    } catch (err) {
+      console.error('[Synthesis] Failed to copy from view:', view.id, err);
+    }
+  }
+
+  if (parts.length === 0) {
+    console.warn('[Synthesis] No answers found to synthesize');
+    mainWindow.webContents.send('synthesis:done', { error: 'No answers found' });
+    return;
+  }
+
+  // NOW open the window (after copying is done so we don't steal focus)
+  openGeminiTerminalWindow();
+  // Wait for the renderer to signal it has set up IPC listeners
+  await waitForSynthWindowReady();
+
+  const prompt = SYNTHESIS_PROMPT_PREFIX + parts.join('\n\n---\n\n');
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`[Synthesis] Sending ${parts.length} answers to Gemini CLI`);
+
+  // Notify the synthesis window that a new entry is starting
+  if (geminiTerminalWindow && !geminiTerminalWindow.isDestroyed()) {
+    geminiTerminalWindow.webContents.send('synthesis:entry-start', {
+      providerCount: parts.length,
+      timestamp,
+    });
+  }
+
+  // Run through Gemini CLI
+  await geminiProcessor.run(prompt, {
+    onOutput: (text) => {
+      if (geminiTerminalWindow && !geminiTerminalWindow.isDestroyed()) {
+        geminiTerminalWindow.webContents.send('synthesis:output', text);
+        // Focus on first output chunk
+        if (!geminiTerminalWindow.isFocused()) {
+          geminiTerminalWindow.focus();
+        }
+      }
+    },
+    onError: (text) => {
+      if (geminiTerminalWindow && !geminiTerminalWindow.isDestroyed()) {
+        geminiTerminalWindow.webContents.send('synthesis:error', text);
+      }
+    },
+    onDone: (code) => {
+      if (geminiTerminalWindow && !geminiTerminalWindow.isDestroyed()) {
+        geminiTerminalWindow.webContents.send('synthesis:entry-done', { code });
+      }
+    },
+  });
+
+  mainWindow.webContents.send('synthesis:done');
+}
+
+ipcMain.handle('synthesize', async () => {
+  await synthesizeViaGeminiCLI();
+  return { success: true };
 });
 
 
@@ -1370,7 +1559,7 @@ function getAppSettings(): WorkspaceSettings {
   return {
     workspaceName: "",
     defaultProviders: ["chatgpt", "gemini", "perplexity"],
-    layout: "row",
+    layout: "stack",
     showAddressBar: false,
     showProviderBar: true,
     ...saved,

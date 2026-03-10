@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com;" />
+    content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com http://localhost:4100;" />
   <title>Multi-LLM Interface</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -455,6 +455,21 @@
     }
 
     /* ── Sessions Sidebar ── */
+
+    /* ── Synthesize button star style ── */
+    #synthesize-btn {
+      background: linear-gradient(135deg, #8ab4f8, #c58af9);
+      border: none;
+    }
+
+    #synthesize-btn:hover {
+      background: linear-gradient(135deg, #6ea3f7, #b070f0);
+    }
+
+    #synthesize-btn.loading svg {
+      animation: spin 0.8s linear infinite;
+    }
+
     #sessions-sidebar {
       position: fixed;
       top: 0;
@@ -1339,6 +1354,14 @@
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
         </button>
+        <button class="prompt-icon-btn" id="synthesize-btn" title="Synthesize All Answers (Ctrl+S)"
+          aria-label="Synthesize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path
+              d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+          </svg>
+        </button>
       </div>
     </div>
     <div id="toast-container"></div>
@@ -1490,6 +1513,7 @@
             </label>
           </div>
         </div>
+
       </div>
       <div class="settings-footer">
         <span class="settings-saved-indicator" id="settings-saved">✓ Saved</span>

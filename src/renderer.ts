@@ -386,6 +386,41 @@ if (copyAllAnswersButton) {
   });
 }
 
+// ── Synthesis (via Gemini view) ──────────────────────────────────────────
+const synthesizeBtn = document.getElementById("synthesize-btn") as HTMLButtonElement | null;
+
+if (synthesizeBtn) {
+  synthesizeBtn.addEventListener("click", async () => {
+    synthesizeBtn.disabled = true;
+    synthesizeBtn.classList.add("loading");
+
+    try {
+      await ipcRenderer.invoke("synthesize");
+      showToast("Synthesis sent to Gemini", "success");
+    } catch (err: any) {
+      showToast("Synthesis failed", "error");
+    }
+
+    synthesizeBtn.disabled = false;
+    synthesizeBtn.classList.remove("loading");
+  });
+}
+
+// Listen for synthesis lifecycle events from main process
+ipcRenderer.on("synthesis:start", () => {
+  if (synthesizeBtn) {
+    synthesizeBtn.disabled = true;
+    synthesizeBtn.classList.add("loading");
+  }
+});
+
+ipcRenderer.on("synthesis:done", () => {
+  if (synthesizeBtn) {
+    synthesizeBtn.disabled = false;
+    synthesizeBtn.classList.remove("loading");
+  }
+});
+
 ipcRenderer.on("inject-prompt", (event, selectedPrompt: string) => {
   console.log("Injecting prompt into textarea:", selectedPrompt);
 
