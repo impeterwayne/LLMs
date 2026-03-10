@@ -523,6 +523,23 @@ function saveActiveLayoutSnapshot(reason?: string): void {
   }
 }
 
+// Shared stack-cycle logic used by before-input-event on every webContents
+function cycleStack(direction: 'next' | 'prev'): void {
+  if (getCurrentLayoutMode() !== 'stack' || views.length === 0) return;
+  if (direction === 'next') {
+    stackActiveIndex = (stackActiveIndex + 1) % views.length;
+  } else {
+    stackActiveIndex = (stackActiveIndex - 1 + views.length) % views.length;
+  }
+  void adjustBrowserViewBounds();
+  mainWindow?.webContents.send("stack:active-changed", stackActiveIndex);
+  // Focus the newly active view so it receives subsequent keyboard events
+  const activeView = views[stackActiveIndex];
+  if (activeView && !activeView.webContents.isDestroyed()) {
+    activeView.webContents.focus();
+  }
+}
+
 // Attach listeners to keep last URL up-to-date for active session
 function wireViewUrlPersistence(view: WebContentsView & { id?: string }): void {
   const update = () => {
@@ -547,6 +564,15 @@ function wireViewUrlPersistence(view: WebContentsView & { id?: string }): void {
   wc.on("did-navigate-in-page", update);
   wc.on("did-redirect-navigation", update as any);
   wc.on("page-title-updated", update as any);
+
+  // Intercept Ctrl+Tab / Ctrl+Shift+Tab from BrowserViews so it works without main window focus
+  wc.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.control && input.key === 'Tab') {
+      _event.preventDefault();
+      cycleStack(input.shift ? 'prev' : 'next');
+    }
+  });
 }
 
 function restoreLayout(tabs: TabState[], lastUrlByProvider?: Record<string, string>): void {
@@ -817,6 +843,15 @@ app.whenReady().then(async () => {
   electronLocalShortcut.register(mainWindow, "Ctrl+S", () => {
     console.log('[Synthesis] Ctrl+S pressed — synthesizing via Gemini CLI');
     synthesizeViaGeminiCLI();
+  });
+
+  // Ctrl+Tab / Ctrl+Shift+Tab on the main window's own webContents (renderer chrome)
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.control && input.key === 'Tab') {
+      _event.preventDefault();
+      cycleStack(input.shift ? 'prev' : 'next');
+    }
   });
 });
 

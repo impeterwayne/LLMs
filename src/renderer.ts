@@ -582,18 +582,7 @@ ipcRenderer.on('stack:active-changed', (_event, activeIndex: number) => {
   updateStackActiveTab(activeIndex);
 });
 
-// Ctrl+Tab / Ctrl+Shift+Tab for stack cycling
-window.addEventListener('keydown', (e) => {
-  if (currentLayoutMode !== 'stack') return;
-  if (e.ctrlKey && e.key === 'Tab') {
-    e.preventDefault();
-    if (e.shiftKey) {
-      ipcRenderer.send('stack:prev');
-    } else {
-      ipcRenderer.send('stack:next');
-    }
-  }
-});
+// Ctrl+Tab / Ctrl+Shift+Tab handled by electronLocalShortcut in main process
 
 // Ensure container reference on load
 window.addEventListener('DOMContentLoaded', () => {
