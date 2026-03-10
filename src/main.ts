@@ -1154,6 +1154,20 @@ function openGeminiTerminalWindow(): BrowserWindow {
   geminiTerminalWindow.removeMenu();
   geminiTerminalWindow.loadFile(path.join(__dirname, '..', 'synthesis.html'));
 
+  // Prevent navigation inside the synthesis window — open links in default browser
+  geminiTerminalWindow.webContents.on('will-navigate', (event, url) => {
+    if (url && /^https?:\/\//i.test(url)) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+  geminiTerminalWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url && /^https?:\/\//i.test(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
   geminiTerminalWindow.once('ready-to-show', () => {
     geminiTerminalWindow!.show();
   });
