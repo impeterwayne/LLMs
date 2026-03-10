@@ -350,23 +350,31 @@ const copyAllAnswersButton = document.getElementById(
 
 const COPY_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
 const CHECK_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+const LOADING_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`;
 
 if (copyAllAnswersButton) {
   copyAllAnswersButton.addEventListener("click", async () => {
     copyAllAnswersButton.disabled = true;
+    copyAllAnswersButton.innerHTML = LOADING_ICON_SVG;
+    copyAllAnswersButton.classList.add("loading");
 
     try {
       const result = await ipcRenderer.invoke("copy-all-answers");
 
+      copyAllAnswersButton.classList.remove("loading");
+
       if (result.success) {
         copyAllAnswersButton.innerHTML = CHECK_ICON_SVG;
         copyAllAnswersButton.classList.add("copied");
-        showToast(`Copied ${result.count} answer(s)!`, "success");
+        showToast(`Copied ${result.count} conversation(s)!`, "success");
       } else {
+        copyAllAnswersButton.innerHTML = COPY_ICON_SVG;
         showToast(result.message || "No answers found", "error");
       }
     } catch (error) {
       console.error("Failed to copy all answers", error);
+      copyAllAnswersButton.classList.remove("loading");
+      copyAllAnswersButton.innerHTML = COPY_ICON_SVG;
       showToast("Copy failed", "error");
     }
 

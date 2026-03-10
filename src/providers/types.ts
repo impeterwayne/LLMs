@@ -68,6 +68,14 @@ export interface Provider {
     sendButtonSelectors?: string[];
 
     /**
+     * Optional JS snippet that resolves when the provider's framework
+     * is fully ready (e.g., Quill hydrated, React mounted).
+     * Executed AFTER the element poll succeeds but BEFORE inject/send.
+     * The script must return a Promise that resolves when ready.
+     */
+    buildReadinessScript?(): string;
+
+    /**
      * When true, the pipeline will use Electron's native sendInputEvent
      * to press Enter on the editor instead of executing the send script.
      * This produces trusted events that pass isTrusted checks in React/Radix.

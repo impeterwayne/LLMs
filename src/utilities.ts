@@ -424,10 +424,22 @@ export async function pipelineInjectAndSendAllViews(
   prompt: string,
   opts: PipelineOptions = {},
 ): Promise<PipelineResult[]> {
-  return Promise.all(
+  const logFile = path.resolve(__utilDirname, '..', 'debug-pipeline.log');
+  const logLines: string[] = [];
+  const log = (msg: string) => {
+    const ts = new Date().toISOString().slice(11, 23);
+    const line = `[${ts}] ${msg}`;
+    console.log(line);
+    logLines.push(line);
+  };
+
+  log(`=== START inject+send for ${views.length} views, prompt length: ${prompt.length} ===`);
+  const results = await Promise.all(
     views.map(async (view) => {
+      const viewUrl = view.webContents.isDestroyed() ? view.id : view.webContents.getURL();
       const provider = getProvider(view.id);
       if (!provider) {
+        log(`NO-PROVIDER view.id="${view.id}" url="${viewUrl}"`);
         return {
           viewId: view.id || "unknown",
           success: false,
@@ -436,46 +448,57 @@ export async function pipelineInjectAndSendAllViews(
         };
       }
 
-      if (provider.focusBeforeInject) {
-        // Don't focus here — pipeline will do just-in-time focus
-      }
+      log(`[${provider.id}] START view.id="${view.id}" url="${viewUrl}" loading=${view.webContents.isLoadingMainFrame()}`);
 
       const injectScript = provider.buildInjectScript(prompt);
 
       // Inject first
+      log(`[${provider.id}] pipelineInject...`);
       const injectResult = await pipelineInject(view, injectScript, {
         editorSelectors: provider.editorSelectors ?? [],
-        focusFn: provider.focusBeforeInject ? () => view.webContents.focus() : undefined,
+        focusFn: provider.focusBeforeInject ? () => { log(`[${provider.id}] focusFn(inject)`); view.webContents.focus(); } : undefined,
+        readinessScript: provider.buildReadinessScript?.() ?? '',
         ...opts,
       });
+      log(`[${provider.id}] INJECT ${injectResult.success ? 'OK' : 'FAIL'} stage=${injectResult.stage}${injectResult.error ? ' err=' + injectResult.error : ''}`);
       if (!injectResult.success) return injectResult;
 
       // Brief delay for UI to react
-      await new Promise((r) => setTimeout(r, opts.injectToSendDelay ?? 300));
+      const delay = opts.injectToSendDelay ?? 300;
+      log(`[${provider.id}] delay ${delay}ms...`);
+      await new Promise((r) => setTimeout(r, delay));
 
-      // For native-Enter providers: try JS send first (focus-independent),
-      // then fall back to native Enter (requires view to be active/focused).
+      // For native-Enter providers
       if (provider.useNativeEnterToSend) {
         const sendScript = provider.buildSendScript();
         try {
           await view.webContents.executeJavaScript(sendScript);
-          console.log(`[Pipeline][${view.id}] Submitted via JS send script`);
+          log(`[${provider.id}] SEND OK (JS script)`);
           return { viewId: view.id || "unknown", success: true, stage: "send" as const };
         } catch (jsErr: any) {
-          console.warn(`[Pipeline][${view.id}] JS send failed, trying native Enter:`, jsErr.message);
+          log(`[${provider.id}] JS send failed: ${jsErr.message}, trying native Enter`);
         }
         return sendViaNativeEnter(view, provider);
       }
 
-      // Standard JS send script — no focusFn needed, button clicks work without
-      // Electron-level focus and calling focus() here would steal it from the user.
+      // Standard send
       const sendScript = provider.buildSendScript();
-      return pipelineSend(view, sendScript, {
+      log(`[${provider.id}] pipelineSend... url="${view.webContents.getURL()}" loading=${view.webContents.isLoadingMainFrame()}`);
+      const sendResult = await pipelineSend(view, sendScript, {
         sendButtonSelectors: provider.sendButtonSelectors ?? [],
+        focusFn: provider.focusBeforeSend ? () => { log(`[${provider.id}] focusFn(send)`); view.webContents.focus(); } : undefined,
         ...opts,
       });
+      log(`[${provider.id}] SEND ${sendResult.success ? 'OK' : 'FAIL'} stage=${sendResult.stage}${sendResult.error ? ' err=' + sendResult.error : ''}`);
+      return sendResult;
     }),
   );
+
+  // Flush all logs at once — avoids parallel write corruption
+  log(`=== END results: ${results.map(r => `${r.viewId.slice(0, 20)}=${r.success}`).join(', ')} ===`);
+  try { fs.writeFileSync(logFile, logLines.join('\r\n') + '\r\n'); } catch { }
+
+  return results;
 }
 
 /**
@@ -595,9 +618,9 @@ export async function simulateFileDropInView(
 }
 
 /**
- * Copy the latest answer from a view.
- * Returns the copied text, "__COPIED__" if copy was triggered but clipboard
- * couldn't be read, or null if copy failed.
+ * Copy the full conversation from a view (all user/assistant turns).
+ * Returns the formatted conversation text, "__COPIED__" if copy was triggered
+ * but clipboard couldn't be read, or null if copy failed.
  */
 export async function copyAnswerFromView(view: CustomBrowserView): Promise<string | null> {
   try {

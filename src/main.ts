@@ -806,15 +806,9 @@ app.whenReady().then(() => {
         // Send the text to the prompt area
         mainWindow.webContents.send("inject-prompt", text);
 
-        // Use command pipeline — waits for each page to be ready before injecting
-        pipelineInjectAndSendAllViews(views, text).then((results) => {
-          const failed = results.filter((r) => !r.success);
-          if (failed.length > 0) {
-            console.warn("[LLM-God] Some views failed in Ctrl+Q pipeline:", failed);
-          }
-        }).catch((err) => {
-          console.error("[LLM-God] Ctrl+Q pipeline error:", err);
-        });
+        // Reuse the shared pipeline so every provider (incl. Gemini, Google AI)
+        // follows the exact same inject+send path as Ctrl+Enter.
+        executeSendPipeline(text);
       }
     }, 150);
   });
@@ -995,7 +989,7 @@ ipcMain.on("copy-to-clipboard", (_, text: string) => {
   clipboard.writeText(text ?? "");
 });
 
-// Copy all answers from all views that support copy
+// Copy full conversations from all views that support copy
 ipcMain.handle("copy-all-answers", async () => {
   const tempDir = app.getPath("temp");
   const tempFiles: { provider: string; filePath: string }[] = [];
@@ -1116,25 +1110,12 @@ ipcMain.on('view-navigate', (_evt, { id, url }: { id: string; url: string }) => 
   }
 });
 
-ipcMain.on("send-prompt", async (_evt, prompt: string) => {
-  try {
-    let firstPrompt = typeof prompt === "string" ? prompt : "";
-    if (!firstPrompt) {
-      try {
-        firstPrompt = await mainWindow.webContents.executeJavaScript(
-          `document.getElementById('prompt-input')?.value || ''`
-        );
-      } catch { }
-    }
-
-    const state = getSessionState();
-    if (!state.activeId) {
-      createNewSession(firstPrompt, true); // Fresh layout like Ctrl+N
-    }
-  } catch (err) {
-    console.error("Failed to auto-create session on first message", err);
-  }
-
+/**
+ * Shared pipeline: inject prompt into all views and send.
+ * Used by both `send-prompt` IPC and the global Ctrl+Q shortcut
+ * so every provider follows the exact same code path.
+ */
+function executeSendPipeline(prompt: string): void {
   // Auto-rename session on first meaningful prompt (if title is still the default timestamp)
   try {
     const state = getSessionState();
@@ -1180,6 +1161,28 @@ ipcMain.on("send-prompt", async (_evt, prompt: string) => {
       saveActiveLayoutSnapshot("post-send");
     }, 2000);
   } catch { }
+}
+
+ipcMain.on("send-prompt", async (_evt, prompt: string) => {
+  try {
+    let firstPrompt = typeof prompt === "string" ? prompt : "";
+    if (!firstPrompt) {
+      try {
+        firstPrompt = await mainWindow.webContents.executeJavaScript(
+          `document.getElementById('prompt-input')?.value || ''`
+        );
+      } catch { }
+    }
+
+    const state = getSessionState();
+    if (!state.activeId) {
+      createNewSession(firstPrompt, true); // Fresh layout like Ctrl+N
+    }
+  } catch (err) {
+    console.error("Failed to auto-create session on first message", err);
+  }
+
+  executeSendPipeline(prompt);
 });
 
 // ----- Sessions IPC -----

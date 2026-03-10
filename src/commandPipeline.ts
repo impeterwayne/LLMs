@@ -48,21 +48,27 @@ new Promise((resolve) => {
 
 /**
  * Wait for the webContents to reach a "ready" state.
- * If it's currently loading, we wait for did-finish-load.
- * Then we also run a JS check to ensure the DOM is interactive.
+ * Handles redirect chains (e.g., gemini.google.com → gemini.google.com/app)
+ * by re-checking isLoadingMainFrame after each load event.
  */
 async function waitForPageReady(
     wc: WebContents,
     timeoutMs = 15000,
 ): Promise<void> {
-    // 1. Wait for Electron's loading to finish
-    if (wc.isLoadingMainFrame()) {
+    const deadline = Date.now() + timeoutMs;
+
+    // Wait through up to N redirect hops
+    const MAX_HOPS = 5;
+    for (let hop = 0; hop < MAX_HOPS; hop++) {
+        if (!wc.isLoadingMainFrame()) break;
+
         await new Promise<void>((resolve) => {
+            const remaining = Math.max(deadline - Date.now(), 500);
             const timer = setTimeout(() => {
                 wc.removeListener("did-finish-load", onLoad);
                 wc.removeListener("did-fail-load", onFail);
                 resolve();
-            }, timeoutMs);
+            }, remaining);
 
             const onLoad = () => {
                 clearTimeout(timer);
@@ -78,9 +84,14 @@ async function waitForPageReady(
             wc.once("did-finish-load", onLoad);
             wc.once("did-fail-load", onFail);
         });
+
+        if (Date.now() >= deadline) break;
+
+        // Brief pause to let JS redirects kick in (setTimeout(()=>location=...,0))
+        await new Promise((r) => setTimeout(r, 150));
     }
 
-    // 2. Wait for DOM to be interactive
+    // Final DOM-interactive check
     try {
         await wc.executeJavaScript(JS_WAIT_PAGE_READY);
     } catch {
@@ -156,6 +167,11 @@ export interface PipelineOptions {
      * Must NOT be called early — only at the exact moment before execution.
      */
     focusFn?: () => void;
+    /**
+     * JS snippet to execute after the element poll but before inject/send.
+     * Must return a Promise. Used to wait for framework hydration (e.g. Quill).
+     */
+    readinessScript?: string;
 }
 
 const DEFAULT_OPTIONS: Required<PipelineOptions> = {
@@ -166,13 +182,15 @@ const DEFAULT_OPTIONS: Required<PipelineOptions> = {
     editorSelectors: [],
     sendButtonSelectors: [],
     focusFn: () => { },
+    readinessScript: '',
 };
 
 /**
  * Execute the inject pipeline for a single view:
- *  1. Wait for page ready
+ *  1. Wait for page ready (handles redirect chains)
  *  2. Poll for editor element
  *  3. Execute inject script
+ *  If a navigation interrupts steps 2–3 (JS redirect), retries once.
  */
 export async function pipelineInject(
     view: CustomBrowserView,
@@ -181,32 +199,57 @@ export async function pipelineInject(
 ): Promise<PipelineResult> {
     const viewId = view.id || "unknown";
     const options = { ...DEFAULT_OPTIONS, ...opts };
+    const MAX_ATTEMPTS = 2; // 1 initial + 1 retry on navigation
 
-    try {
-        // Stage 1: Wait for page
-        await waitForPageReady(view.webContents, options.pageReadyTimeout);
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+            // Stage 1: Wait for page
+            await waitForPageReady(view.webContents, options.pageReadyTimeout);
 
-        // Stage 2: Poll for editor element
-        if (options.editorSelectors.length > 0) {
-            try {
-                await view.webContents.executeJavaScript(
-                    buildPollScript(options.editorSelectors, options.elementPollTimeout, options.pollInterval),
-                );
-            } catch (err: any) {
-                console.warn(`[Pipeline][${viewId}] Editor element poll failed:`, err.message);
-                // Continue anyway — the inject script may have its own fallback
+            // Stage 2: Poll for editor element
+            if (options.editorSelectors.length > 0) {
+                try {
+                    await view.webContents.executeJavaScript(
+                        buildPollScript(options.editorSelectors, options.elementPollTimeout, options.pollInterval),
+                    );
+                } catch (err: any) {
+                    // If the page navigated (redirect), the JS context was destroyed.
+                    // Retry from the top if we haven't exceeded attempts.
+                    if (attempt < MAX_ATTEMPTS - 1 && view.webContents.isLoadingMainFrame()) {
+                        console.log(`[Pipeline][${viewId}] Navigation during poll, retrying (attempt ${attempt + 1})...`);
+                        continue;
+                    }
+                    console.warn(`[Pipeline][${viewId}] Editor element poll failed:`, err.message);
+                    // Continue anyway — the inject script may have its own fallback
+                }
             }
+
+            // Stage 2.5: Framework readiness check
+            if (options.readinessScript) {
+                try {
+                    await view.webContents.executeJavaScript(options.readinessScript);
+                } catch (err: any) {
+                    console.warn(`[Pipeline][${viewId}] Readiness check failed:`, err.message);
+                }
+            }
+
+            // Stage 3: Focus (just-in-time) + Inject
+            if (options.focusFn) options.focusFn();
+            await view.webContents.executeJavaScript(injectScript);
+
+            return { viewId, success: true, stage: "inject" };
+        } catch (err: any) {
+            // If a navigation killed the inject script and we can retry, do so
+            if (attempt < MAX_ATTEMPTS - 1 && view.webContents.isLoadingMainFrame()) {
+                console.log(`[Pipeline][${viewId}] Navigation during inject, retrying (attempt ${attempt + 1})...`);
+                continue;
+            }
+            console.error(`[Pipeline][${viewId}] Inject failed:`, err.message);
+            return { viewId, success: false, stage: "inject", error: err.message };
         }
-
-        // Stage 3: Focus (just-in-time) + Inject
-        if (options.focusFn) options.focusFn();
-        await view.webContents.executeJavaScript(injectScript);
-
-        return { viewId, success: true, stage: "inject" };
-    } catch (err: any) {
-        console.error(`[Pipeline][${viewId}] Inject failed:`, err.message);
-        return { viewId, success: false, stage: "inject", error: err.message };
     }
+
+    return { viewId, success: false, stage: "inject", error: "Max attempts exceeded" };
 }
 
 /**

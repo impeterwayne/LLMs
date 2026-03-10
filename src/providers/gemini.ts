@@ -44,11 +44,37 @@ const SELECTORS = {
 export const gemini: Provider = {
     id: 'gemini',
     matchUrl: (url) => /gemini\.google\.com/i.test(url),
-    // focusBeforeInject removed — inject script handles focus internally
-    // with document.hasFocus() check + DOM fallback for parallel execution
+    focusBeforeInject: true,
     focusBeforeSend: true,
     editorSelectors: SELECTORS.editor,
     sendButtonSelectors: SELECTORS.sendButton,
+
+    buildReadinessScript(): string {
+        // Wait until Quill has hydrated — the .ql-editor element exists in the DOM
+        // before Quill attaches, so we poll for isContentEditable + the Quill container
+        // having a __quill reference (or the ql-container being present).
+        const selectors = JSON.stringify(SELECTORS.editor);
+        return `
+        new Promise((resolve) => {
+            var timeout = 8000, elapsed = 0, interval = 200;
+            function check() {
+                var sels = ${selectors};
+                for (var i = 0; i < sels.length; i++) {
+                    var el = document.querySelector(sels[i]);
+                    if (el && el.isContentEditable) {
+                        // Also check parent for ql-container (Quill ready signal)
+                        var container = el.closest('.ql-container');
+                        if (container) { resolve(true); return; }
+                    }
+                }
+                elapsed += interval;
+                if (elapsed >= timeout) { resolve(false); return; }
+                setTimeout(check, interval);
+            }
+            check();
+        });
+        `;
+    },
 
     buildInjectScript(prompt: string): string {
         return loadScript('gemini', 'inject', {
