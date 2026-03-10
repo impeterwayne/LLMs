@@ -16,7 +16,7 @@
 
 ---
 
-![Main Interface](docs/screenshot-main.png)
+![Main Interface](docs/screenshot-main.png?v=103)
 
 ## About
 
